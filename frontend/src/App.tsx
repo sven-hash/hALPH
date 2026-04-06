@@ -105,7 +105,7 @@ function App() {
         await refreshState()
         return Promise.resolve()
       },
-      errorCallback: async (error) => {
+      errorCallback: async (error: unknown) => {
         const message = error instanceof Error ? error.message : String(error)
         setStatus(`Event subscription error: ${message}`)
         return Promise.resolve()

@@ -35,6 +35,9 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile
+
       - name: Install frontend dependencies
         run: |
           cd frontend
