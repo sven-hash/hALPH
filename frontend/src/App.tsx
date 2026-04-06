@@ -6,10 +6,11 @@ import type { CountdownGameTypes } from '../../artifacts/ts/CountdownGame'
 import './App.css'
 
 const defaultContractAddress = '26NmnTSsUjkwA4ArkQkUsmiJC81tHCvWUrWh9eVxXf8ZM'
+const defaultNodeUrl = 'https://node.testnet.alephium.org'
 const envContractAddress = (
   import.meta.env.VITE_COUNTDOWN_CONTRACT_ADDRESS ?? defaultContractAddress
 ).trim()
-const envNodeUrl = (import.meta.env.VITE_NODE_URL ?? 'https://node.testnet.alephium.org').trim()
+const envNodeUrl = (import.meta.env.VITE_NODE_URL ?? '').trim() || defaultNodeUrl
 const fetcher: typeof fetch = (input, init) => window.fetch(input, init)
 
 function formatAddress(address: string): string {
@@ -68,6 +69,7 @@ function App() {
   const wallet = useWallet()
 
   const canPlay = useMemo(() => wallet !== undefined && envContractAddress.length > 0, [wallet])
+  const resolvedNodeUrl = nodeUrl.trim() || defaultNodeUrl
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(BigInt(Date.now())), 1000)
@@ -83,7 +85,7 @@ function App() {
     setLoadingState(true)
     setStatus('')
     try {
-      web3.setCurrentNodeProvider(nodeUrl, undefined, fetcher)
+      web3.setCurrentNodeProvider(resolvedNodeUrl, undefined, fetcher)
       const game = CountdownGame.at(envContractAddress)
       const nextState = await game.fetchState()
       setState(nextState.fields)
@@ -93,11 +95,11 @@ function App() {
     } finally {
       setLoadingState(false)
     }
-  }, [nodeUrl])
+  }, [resolvedNodeUrl])
 
   useEffect(() => {
     if (envContractAddress.length === 0) return
-    web3.setCurrentNodeProvider(nodeUrl, undefined, fetcher)
+    web3.setCurrentNodeProvider(resolvedNodeUrl, undefined, fetcher)
     const game = CountdownGame.at(envContractAddress)
 
     refreshState()
@@ -118,7 +120,7 @@ function App() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [refreshState])
+  }, [refreshState, resolvedNodeUrl])
 
   const play = async () => {
     if (wallet === undefined) {
@@ -133,7 +135,7 @@ function App() {
     setPlaying(true)
     setStatus('')
     try {
-      web3.setCurrentNodeProvider(nodeUrl, undefined, fetcher)
+      web3.setCurrentNodeProvider(resolvedNodeUrl, undefined, fetcher)
       const game = CountdownGame.at(envContractAddress)
       const signer = wallet.signer
       if (signer === undefined) throw new Error('Connected wallet has no signer.')
