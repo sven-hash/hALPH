@@ -5,7 +5,10 @@ import { CountdownGame } from '../../artifacts/ts/CountdownGame'
 import type { CountdownGameTypes } from '../../artifacts/ts/CountdownGame'
 import './App.css'
 
-const envContractAddress = (import.meta.env.VITE_COUNTDOWN_CONTRACT_ADDRESS ?? '').trim()
+const defaultContractAddress = '26NmnTSsUjkwA4ArkQkUsmiJC81tHCvWUrWh9eVxXf8ZM'
+const envContractAddress = (
+  import.meta.env.VITE_COUNTDOWN_CONTRACT_ADDRESS ?? defaultContractAddress
+).trim()
 const envNodeUrl = (import.meta.env.VITE_NODE_URL ?? 'https://node.testnet.alephium.org').trim()
 const fetcher: typeof fetch = (input, init) => window.fetch(input, init)
 
