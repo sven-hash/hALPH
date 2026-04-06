@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { waitForTxConfirmation, web3 } from '@alephium/web3'
-import { AlephiumConnectButton, useWallet } from '@alephium/web3-react'
+import { AlephiumConnectButton, useBalance, useWallet } from '@alephium/web3-react'
 import { CountdownGame } from '../../artifacts/ts/CountdownGame'
 import type { CountdownGameTypes } from '../../artifacts/ts/CountdownGame'
 import { useQuery } from '@tanstack/react-query'
@@ -128,9 +128,13 @@ function App() {
   const [nowMs, setNowMs] = useState<bigint>(BigInt(Date.now()))
   const [feed, setFeed] = useState<PlayFeedItem[]>([])
   const wallet = useWallet()
+  const { balance, updateBalanceForTx } = useBalance()
 
   const canPlay = useMemo(() => wallet !== undefined && CONTRACT_ADDRESS.length > 0, [wallet])
   const walletAddress = wallet?.account?.address
+  const playCost = CountdownGame.consts.PLAY_COST
+  const availableAlph = BigInt(balance?.balance ?? '0')
+  const hasEnoughAlph = availableAlph >= playCost
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(BigInt(Date.now())), 1000)
@@ -178,21 +182,15 @@ function App() {
     refetchIntervalInBackground: true
   })
 
-  const { data: walletBalance } = useQuery<string>({
-    queryKey: ['wallet-balance', walletAddress, NODE_URL],
-    enabled: Boolean(walletAddress),
-    queryFn: async () => {
-      if (!walletAddress) return '--'
-      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
-      const balance = await web3.getCurrentNodeProvider().addresses.getAddressesAddressBalance(walletAddress)
-      return attoToAlph(BigInt(balance.balance))
-    },
-    refetchInterval: 10000
-  })
+  const walletBalance = useMemo(() => attoToAlph(availableAlph), [availableAlph])
 
   const play = async () => {
     if (wallet === undefined) {
       setStatus('Connect wallet to play.')
+      return
+    }
+    if (!hasEnoughAlph) {
+      setStatus(`Not enough ALPH. You need at least ${attoToAlph(playCost)} ALPH to play.`)
       return
     }
     if (CONTRACT_ADDRESS.length === 0) {
@@ -211,6 +209,7 @@ function App() {
         signer,
         attoAlphAmount: CountdownGame.consts.PLAY_COST
       })
+      updateBalanceForTx(result.txId)
       setStatus('Submitted. Waiting for confirmation...')
       setConfirming(true)
       await waitForTxConfirmation(result.txId, 1, 1000)
@@ -302,17 +301,24 @@ function App() {
 
             <button
               onClick={play}
-              disabled={!canPlay || playing || confirming}
+              disabled={!canPlay || playing || confirming || !hasEnoughAlph}
               className="mt-8 w-full max-w-md rounded-2xl bg-emerald-500 px-6 py-5 text-lg font-bold text-slate-950 transition hover:bg-emerald-400 md:text-xl disabled:cursor-not-allowed disabled:opacity-50"
             >
               {!walletAddress
                 ? 'CONNECT WALLET FIRST'
+                : !hasEnoughAlph
+                  ? 'NOT ENOUGH ALPH'
                 : playing
                   ? 'Submitting...'
                   : confirming
                     ? 'Confirming...'
                     : 'PLAY — 1 ALPH'}
             </button>
+            {walletAddress && !hasEnoughAlph && (
+              <div className="mt-2 text-xs text-amber-300">
+                You need at least {attoToAlph(playCost)} ALPH available.
+              </div>
+            )}
             <div className="mt-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm text-slate-100 shadow-[0_0_24px_rgba(16,185,129,0.2)]">
               👑 Current Leader: {state ? formatAddress(state.currentLeader) : '--'}
             </div>
