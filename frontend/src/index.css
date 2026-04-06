@@ -1,10 +1,4 @@
-:root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #e2e8f0;
-  background-color: #0b1120;
-}
+@import "tailwindcss";
 
 * {
   box-sizing: border-box;
@@ -13,6 +7,7 @@
 body {
   margin: 0;
   min-width: 320px;
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
 }
 
 #root {

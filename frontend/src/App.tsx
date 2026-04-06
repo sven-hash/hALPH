@@ -1,21 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { waitForTxConfirmation, web3 } from '@alephium/web3'
 import { AlephiumConnectButton, useWallet } from '@alephium/web3-react'
 import { CountdownGame } from '../../artifacts/ts/CountdownGame'
 import type { CountdownGameTypes } from '../../artifacts/ts/CountdownGame'
-import './App.css'
+import { useQuery } from '@tanstack/react-query'
+import { AnimatePresence, motion } from 'framer-motion'
 
-const defaultContractAddress = '26NmnTSsUjkwA4ArkQkUsmiJC81tHCvWUrWh9eVxXf8ZM'
-const defaultNodeUrl = 'https://node.testnet.alephium.org'
-const envContractAddress = (
-  import.meta.env.VITE_COUNTDOWN_CONTRACT_ADDRESS ?? defaultContractAddress
-).trim()
-const envNodeUrl = (import.meta.env.VITE_NODE_URL ?? '').trim() || defaultNodeUrl
+const DEFAULT_CONTRACT = '26NmnTSsUjkwA4ArkQkUsmiJC81tHCvWUrWh9eVxXf8ZM'
+const DEFAULT_NODE_URL = 'https://node.testnet.alephium.org'
+const CONTRACT_ADDRESS = (import.meta.env.VITE_COUNTDOWN_CONTRACT_ADDRESS ?? DEFAULT_CONTRACT).trim()
+const NODE_URL = (import.meta.env.VITE_NODE_URL ?? DEFAULT_NODE_URL).trim() || DEFAULT_NODE_URL
 const fetcher: typeof fetch = (input, init) => window.fetch(input, init)
+
+type PlayFeedItem = {
+  id: string
+  player: string
+  durationMs: bigint
+}
 
 function formatAddress(address: string): string {
   if (address.length <= 12) return address
-  return `${address.slice(0, 8)}...${address.slice(-6)}`
+  return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
 function formatDuration(ms: bigint): string {
@@ -58,85 +63,147 @@ function attoToAlph(atto: bigint): string {
   return `${integer.toString()}.${fraction}`
 }
 
+function msToDhm(ms: bigint): string {
+  if (ms <= 0n) return '0d 0h 0m 0s'
+  const second = 1000n
+  const minute = 60n * second
+  const hour = 60n * minute
+  const day = 24n * hour
+
+  let remaining = ms
+  const days = remaining / day
+  remaining %= day
+  const hours = remaining / hour
+  remaining %= hour
+  const minutes = remaining / minute
+  remaining %= minute
+  const seconds = remaining / second
+  return `${days}d ${hours}h ${minutes}m ${seconds}s`
+}
+
+function msToYdhms(ms: bigint): string {
+  if (ms <= 0n) return '00y 000d 00h 00m 00s'
+  const second = 1000n
+  const minute = 60n * second
+  const hour = 60n * minute
+  const day = 24n * hour
+  const year = 365n * day
+
+  let remaining = ms
+  const years = remaining / year
+  remaining %= year
+  const days = remaining / day
+  remaining %= day
+  const hours = remaining / hour
+  remaining %= hour
+  const minutes = remaining / minute
+  remaining %= minute
+  const seconds = remaining / second
+
+  const yy = years.toString().padStart(2, '0')
+  const dd = days.toString().padStart(3, '0')
+  const hh = hours.toString().padStart(2, '0')
+  const mm = minutes.toString().padStart(2, '0')
+  const ss = seconds.toString().padStart(2, '0')
+  return `${yy}y ${dd}d ${hh}h ${mm}m ${ss}s`
+}
+
+function getHalvedCount(durationMs: bigint): number {
+  const initial = CountdownGame.consts.INITIAL_DURATION_MS
+  if (durationMs <= 0n || durationMs > initial) return 0
+  let count = 0
+  let probe = initial
+  while (probe > durationMs) {
+    probe = probe / 2n
+    if (probe == 0n) break
+    count += 1
+  }
+  return count
+}
+
 function App() {
-  const [nodeUrl, setNodeUrl] = useState(envNodeUrl)
   const [status, setStatus] = useState<string>('')
-  const [loadingState, setLoadingState] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [confirming, setConfirming] = useState(false)
-  const [state, setState] = useState<CountdownGameTypes.Fields | null>(null)
   const [nowMs, setNowMs] = useState<bigint>(BigInt(Date.now()))
+  const [feed, setFeed] = useState<PlayFeedItem[]>([])
   const wallet = useWallet()
 
-  const canPlay = useMemo(() => wallet !== undefined && envContractAddress.length > 0, [wallet])
-  const resolvedNodeUrl = nodeUrl.trim() || defaultNodeUrl
+  const canPlay = useMemo(() => wallet !== undefined && CONTRACT_ADDRESS.length > 0, [wallet])
+  const walletAddress = wallet?.account?.address
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(BigInt(Date.now())), 1000)
     return () => window.clearInterval(timer)
   }, [])
 
-  const refreshState = useCallback(async () => {
-    if (envContractAddress.length === 0) {
-      setStatus('Set VITE_COUNTDOWN_CONTRACT_ADDRESS in frontend/.env and restart dev server.')
-      return
-    }
-
-    setLoadingState(true)
-    setStatus('')
-    try {
-      web3.setCurrentNodeProvider(resolvedNodeUrl, undefined, fetcher)
-      const game = CountdownGame.at(envContractAddress)
-      const nextState = await game.fetchState()
-      setState(nextState.fields)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      setStatus(`Failed to fetch state: ${message}`)
-    } finally {
-      setLoadingState(false)
-    }
-  }, [resolvedNodeUrl])
-
   useEffect(() => {
-    if (envContractAddress.length === 0) return
-    web3.setCurrentNodeProvider(resolvedNodeUrl, undefined, fetcher)
-    const game = CountdownGame.at(envContractAddress)
+    if (CONTRACT_ADDRESS.length === 0) return
+    web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+    const game = CountdownGame.at(CONTRACT_ADDRESS)
 
-    refreshState()
-
-    const subscription = game.subscribeAllEvents({
-      pollingInterval: 3000,
-      messageCallback: async () => {
-        await refreshState()
+    const sub = game.subscribePlayedEvent({
+      pollingInterval: 2500,
+      messageCallback: async (event: CountdownGameTypes.PlayedEvent) => {
+        setFeed((prev) =>
+          [
+            {
+              id: event.txId,
+              player: event.fields.player,
+              durationMs: event.fields.durationMs
+            },
+            ...prev
+          ].slice(0, 8)
+        )
         return Promise.resolve()
       },
-      errorCallback: async (error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error)
-        setStatus(`Event subscription error: ${message}`)
-        return Promise.resolve()
-      }
+      errorCallback: async () => Promise.resolve()
     })
 
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [refreshState, resolvedNodeUrl])
+    return () => sub.unsubscribe()
+  }, [])
+
+  const { data: state, isLoading } = useQuery<CountdownGameTypes.Fields>({
+    queryKey: ['countdown-state', NODE_URL, CONTRACT_ADDRESS],
+    queryFn: async () => {
+      if (CONTRACT_ADDRESS.length === 0) {
+        throw new Error('Missing contract address')
+      }
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const game = CountdownGame.at(CONTRACT_ADDRESS)
+      const nextState = await game.fetchState()
+      return nextState.fields
+    },
+    refetchInterval: 4000,
+    refetchIntervalInBackground: true
+  })
+
+  const { data: walletBalance } = useQuery<string>({
+    queryKey: ['wallet-balance', walletAddress, NODE_URL],
+    enabled: Boolean(walletAddress),
+    queryFn: async () => {
+      if (!walletAddress) return '--'
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const balance = await web3.getCurrentNodeProvider().addresses.getAddressesAddressBalance(walletAddress)
+      return attoToAlph(BigInt(balance.balance))
+    },
+    refetchInterval: 10000
+  })
 
   const play = async () => {
     if (wallet === undefined) {
-      setStatus('Connect a wallet before pressing play.')
+      setStatus('Connect wallet to play.')
       return
     }
-    if (envContractAddress.length === 0) {
-      setStatus('Set VITE_COUNTDOWN_CONTRACT_ADDRESS in frontend/.env and restart dev server.')
+    if (CONTRACT_ADDRESS.length === 0) {
+      setStatus('Missing contract address in env.')
       return
     }
-
     setPlaying(true)
     setStatus('')
     try {
-      web3.setCurrentNodeProvider(resolvedNodeUrl, undefined, fetcher)
-      const game = CountdownGame.at(envContractAddress)
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const game = CountdownGame.at(CONTRACT_ADDRESS)
       const signer = wallet.signer
       if (signer === undefined) throw new Error('Connected wallet has no signer.')
 
@@ -144,11 +211,10 @@ function App() {
         signer,
         attoAlphAmount: CountdownGame.consts.PLAY_COST
       })
-      setStatus('Transaction submitted. Waiting for confirmation...')
+      setStatus('Submitted. Waiting for confirmation...')
       setConfirming(true)
       await waitForTxConfirmation(result.txId, 1, 1000)
-      setStatus('Transaction confirmed.')
-      await refreshState()
+      setStatus('')
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setStatus(`Play failed: ${message}`)
@@ -159,71 +225,142 @@ function App() {
   }
 
   const timeLeftMs = useMemo(() => {
-    if (state === null || !state.roundActive) return 0n
+    if (!state || !state.roundActive) return 0n
     if (state.deadlineMs <= nowMs) return 0n
     return state.deadlineMs - nowMs
   }, [state, nowMs])
 
-  const projectedWinner = useMemo(() => (state === null ? 0n : (state.currentPot * 80n) / 100n), [state])
-  const projectedNextSeed = useMemo(() => (state === null ? 0n : (state.currentPot * 10n) / 100n), [state])
-  const projectedSavings = useMemo(() => (state === null ? 0n : state.currentPot - projectedWinner - projectedNextSeed), [state, projectedWinner, projectedNextSeed])
+  const pot = state?.currentPot ?? 0n
+  const prizePot = (pot * 80n) / 100n
+  const nextRoundSeed = (pot * 10n) / 100n
+  const savingsPot = state?.savingsPot ?? 0n
+  const halvedCount = state ? getHalvedCount(state.currentDurationMs) : 0
+  const urgencyClass = useMemo(() => {
+    if (!state?.roundActive || state.currentDurationMs === 0n) return 'text-emerald-400'
+    const percent = Number((timeLeftMs * 100n) / state.currentDurationMs)
+    if (percent < 15) return 'text-red-400'
+    if (percent < 45) return 'text-yellow-300'
+    return 'text-emerald-400'
+  }, [state, timeLeftMs])
+  const isExpired = Boolean(state?.roundActive && timeLeftMs === 0n)
 
   return (
-    <main className="app">
-      <h1>Countdown Game</h1>
-      <p className="subtitle">
-        1 ALPH per play. Every press halves the timer. Last leader when timer reaches zero wins 80%.
-      </p>
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <div className="mx-auto flex h-screen w-full max-w-5xl flex-col px-4 py-4">
+        <header className="mb-3 flex items-center justify-between">
+          <div>
+            <div className="text-lg font-black tracking-[0.2em] text-emerald-300">HALF LIFE</div>
+            <div className="text-xs text-slate-400">Timer-halving survival game</div>
+          </div>
+          <div className="flex items-center gap-2">
+            {walletAddress && (
+              <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
+                {formatAddress(walletAddress)} · {walletBalance ?? '--'} ALPH
+              </div>
+            )}
+            <AlephiumConnectButton />
+          </div>
+        </header>
 
-      <div className="panel">
-        <label>
-          Node URL
-          <input
-            value={nodeUrl}
-            onChange={(e) => setNodeUrl(e.target.value)}
-            placeholder="https://node.testnet.alephium.org"
-          />
-        </label>
-        <p>Contract: <code>{envContractAddress || 'not set in frontend/.env'}</code></p>
+        {status.length > 0 && (
+          <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            {status}
+          </div>
+        )}
 
-        <div className="actions">
-          <AlephiumConnectButton />
-          <button onClick={refreshState} disabled={loadingState}>
-            {loadingState ? 'Loading...' : 'Refresh'}
-          </button>
-          <button onClick={play} disabled={!canPlay || playing || confirming}>
-            {playing ? 'Submitting...' : confirming ? 'Confirming...' : 'Play (1 ALPH)'}
-          </button>
-        </div>
-      </div>
+        <main className="grid flex-1 grid-rows-[1fr_auto] gap-4 md:grid-cols-[1fr_320px] md:grid-rows-1">
+          <section className="flex min-h-0 flex-col items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <p className="mb-3 text-sm text-slate-400">Each play halves the timer and makes you leader.</p>
+            <div className="min-h-[120px] text-center md:min-h-[170px]">
+              <AnimatePresence mode="popLayout">
+                <motion.div
+                  key={state ? state.currentDurationMs.toString() : 'empty'}
+                  initial={{ scale: 1.2, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.85, opacity: 0 }}
+                  transition={{ duration: 0.35 }}
+                  className={`text-4xl font-extrabold tracking-tight md:text-7xl ${urgencyClass} ${state?.roundActive ? 'animate-pulse' : ''}`}
+                >
+                  {isLoading ? '--' : msToYdhms(timeLeftMs)}
+                </motion.div>
+              </AnimatePresence>
+              <div className="mt-2 text-xs text-slate-500">Halved {halvedCount} times</div>
+            </div>
 
-      {status.length > 0 && <p className="status">{status}</p>}
+            {isExpired && (
+              <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-200">
+                GAME OVER — {state ? formatAddress(state.currentLeader) : '--'} won {attoToAlph(prizePot)} ALPH. Next round starts on next play.
+              </div>
+            )}
 
-      <div className="panel">
-        <h2>Live Game State</h2>
-        {state === null ? (
-          <p>No state loaded yet.</p>
-        ) : (
-          <div className="stats-grid">
-            <div className="stat"><span className="label">Round</span><strong>{state.roundActive ? 'Active' : 'Waiting'}</strong></div>
-            <div className="stat"><span className="label">Time left</span><strong className={timeLeftMs === 0n && state.roundActive ? 'danger' : ''}>{formatDuration(timeLeftMs)}</strong></div>
-            <div className="stat"><span className="label">Leader</span><strong>{formatAddress(state.currentLeader)}</strong></div>
-            <div className="stat"><span className="label">Current pot</span><strong>{attoToAlph(state.currentPot)} ALPH</strong></div>
-            <div className="stat"><span className="label">Duration</span><strong>{formatDuration(state.currentDurationMs)}</strong></div>
-            <div className="stat"><span className="label">Savings pot</span><strong>{attoToAlph(state.savingsPot)} ALPH</strong></div>
+            <button
+              onClick={play}
+              disabled={!canPlay || playing || confirming}
+              className="mt-8 w-full max-w-sm rounded-2xl bg-emerald-500 px-6 py-5 text-xl font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {!walletAddress
+                ? 'CONNECT WALLET FIRST'
+                : playing
+                  ? 'Submitting...'
+                  : confirming
+                    ? 'Confirming...'
+                    : 'PLAY — 1 ALPH'}
+            </button>
+            <div className="mt-3 text-sm text-slate-300">Total pot: {attoToAlph(pot)} ALPH</div>
+            <div className="mt-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm text-slate-100 shadow-[0_0_24px_rgba(16,185,129,0.2)]">
+              👑 Current Leader: {state ? formatAddress(state.currentLeader) : '--'}
+            </div>
+
+            <div className="mt-4 grid w-full max-w-xl grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg border border-slate-700 bg-slate-900 p-2">
+                <div className="text-[11px] text-slate-400">Prize Pot (80%)</div>
+                <div className="text-sm font-semibold">{attoToAlph(prizePot)} ALPH</div>
+              </div>
+              <div className="rounded-lg border border-slate-700 bg-slate-900 p-2">
+                <div className="text-[11px] text-slate-400">Next Round Seed (10%)</div>
+                <div className="text-sm font-semibold">{attoToAlph(nextRoundSeed)} ALPH</div>
+              </div>
+              <div className="rounded-lg border border-slate-700 bg-slate-900 p-2">
+                <div className="text-[11px] text-slate-400">Savings Pot (10%)</div>
+                <div className="text-sm font-semibold">{attoToAlph(savingsPot)} ALPH</div>
+              </div>
+            </div>
+          </section>
+
+          <section className="flex min-h-0 flex-col rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-xs font-semibold tracking-widest text-slate-400">RECENT PLAYS</h2>
+              <span className="text-xs text-slate-500">{feed.length} items</span>
+            </div>
+            <div className="min-h-0 flex-1 space-y-2 overflow-auto pr-1">
+              {feed.length === 0 ? (
+                <p className="text-sm text-slate-500">No plays yet.</p>
+              ) : (
+                feed.map((item) => (
+                  <div key={item.id} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
+                    <div className="text-sm text-slate-200">
+                      {formatAddress(item.player)} halved the timer
+                    </div>
+                    <div className="text-xs text-slate-400">→ {msToYdhms(item.durationMs)} remaining</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </main>
+
+        {(playing || confirming) && (
+          <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center bg-slate-950/70 backdrop-blur-sm">
+            <div className="rounded-2xl border border-slate-700 bg-slate-900 px-6 py-5 text-center">
+              <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-emerald-400 border-t-transparent" />
+              <div className="font-semibold text-slate-100">
+                {playing ? 'Submitting transaction...' : 'Waiting for confirmation...'}
+              </div>
+            </div>
           </div>
         )}
       </div>
-
-      <div className="panel">
-        <h2>Projected Payout (if timer ends now)</h2>
-        <div className="split-grid">
-          <div><span>Winner (80%)</span><strong>{attoToAlph(projectedWinner)} ALPH</strong></div>
-          <div><span>Next round seed (10%)</span><strong>{attoToAlph(projectedNextSeed)} ALPH</strong></div>
-          <div><span>Savings (10%)</span><strong>{attoToAlph(projectedSavings)} ALPH</strong></div>
-        </div>
-      </div>
-    </main>
+    </div>
   )
 }
 
