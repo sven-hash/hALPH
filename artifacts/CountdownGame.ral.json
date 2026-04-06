@@ -1,0 +1,116 @@
+{
+  "version": "v4.4.0",
+  "name": "CountdownGame",
+  "bytecode": "0703407140c5410501010003004034d366536a88b41700561701160013c40de0b6b3a7640000a9a0067a4c04181601a003344c010001a006194c0416001601000202a00113c40de0b6b3a76400002aa1011600a100a0020e2d170216020c2f4c020d17021602a102160116022aa103051600a001a003a002610002000300402da0011340502c1340642d1700a001130a2c1340642d1701a00116002b16012b170216000c334c03a0001600a81601a104a00516022aa10504a1060ca1010ca1020ca10306a00016001601160261000002020016a00413c40de0b6b3a76400002aa1010ca1041600a10013c23a1c00263800a102160113c23a1c002638002aa10303a106051600a001a003a00261",
+  "codeHash": "494b178881827aaab6be75e4a4db4298c4bd6e52f3c943613067925c6c5c87ef",
+  "fieldsSig": {
+    "names": [
+      "currentLeader",
+      "currentPot",
+      "currentDurationMs",
+      "deadlineMs",
+      "nextRoundSeed",
+      "savingsPot",
+      "roundActive"
+    ],
+    "types": [
+      "Address",
+      "U256",
+      "U256",
+      "U256",
+      "U256",
+      "U256",
+      "Bool"
+    ],
+    "isMutable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "eventsSig": [
+    {
+      "name": "Played",
+      "fieldNames": [
+        "player",
+        "roundPot",
+        "deadlineMs",
+        "durationMs"
+      ],
+      "fieldTypes": [
+        "Address",
+        "U256",
+        "U256",
+        "U256"
+      ]
+    },
+    {
+      "name": "RoundSettled",
+      "fieldNames": [
+        "winner",
+        "winnerPayout",
+        "nextSeed",
+        "savingsAdded"
+      ],
+      "fieldTypes": [
+        "Address",
+        "U256",
+        "U256",
+        "U256"
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "play",
+      "paramNames": [],
+      "paramTypes": [],
+      "paramIsMutable": [],
+      "returnTypes": []
+    },
+    {
+      "name": "settleExpiredRound",
+      "paramNames": [],
+      "paramTypes": [],
+      "paramIsMutable": [],
+      "returnTypes": []
+    },
+    {
+      "name": "startRound",
+      "paramNames": [
+        "caller",
+        "now"
+      ],
+      "paramTypes": [
+        "Address",
+        "U256"
+      ],
+      "paramIsMutable": [
+        false,
+        false
+      ],
+      "returnTypes": []
+    }
+  ],
+  "constants": [
+    {
+      "name": "PLAY_COST",
+      "value": {
+        "type": "U256",
+        "value": "1000000000000000000"
+      }
+    },
+    {
+      "name": "INITIAL_DURATION_MS",
+      "value": {
+        "type": "U256",
+        "value": "63891936000000"
+      }
+    }
+  ],
+  "enums": []
+}

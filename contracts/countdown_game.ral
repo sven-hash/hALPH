@@ -1,0 +1,77 @@
+Contract CountdownGame(
+    mut currentLeader: Address,
+    mut currentPot: U256,
+    mut currentDurationMs: U256,
+    mut deadlineMs: U256,
+    mut nextRoundSeed: U256,
+    mut savingsPot: U256,
+    mut roundActive: Bool
+) {
+    event Played(player: Address, roundPot: U256, deadlineMs: U256, durationMs: U256)
+    event RoundSettled(winner: Address, winnerPayout: U256, nextSeed: U256, savingsAdded: U256)
+
+    const PLAY_COST = 1 alph
+    const INITIAL_DURATION_MS = 63891936000000
+
+    @using(preapprovedAssets = true, assetsInContract = true, updateFields = true, checkExternalCaller = false)
+    pub fn play() -> () {
+        let caller = callerAddress!()
+        let now = blockTimeStamp!()
+
+        transferTokenToSelf!(caller, ALPH, PLAY_COST)
+
+        if (roundActive && now >= deadlineMs) {
+            settleExpiredRound()
+        }
+
+        if (!roundActive) {
+            startRound(caller, now)
+            return
+        }
+
+        currentPot = currentPot + PLAY_COST
+        currentLeader = caller
+
+        let mut halved = currentDurationMs / 2
+        if (halved == 0) {
+            halved = 1
+        }
+
+        currentDurationMs = halved
+        deadlineMs = now + halved
+
+        emit Played(caller, currentPot, deadlineMs, currentDurationMs)
+    }
+
+    @using(assetsInContract = true, updateFields = true)
+    fn settleExpiredRound() -> () {
+        let winnerPayout = currentPot * 80 / 100
+        let carryToNext = currentPot * 10 / 100
+        let savingsSlice = currentPot - winnerPayout - carryToNext
+
+        if (winnerPayout > 0) {
+            transferTokenFromSelf!(currentLeader, ALPH, winnerPayout)
+        }
+
+        nextRoundSeed = carryToNext
+        savingsPot = savingsPot + savingsSlice
+        roundActive = false
+        currentPot = 0
+        currentDurationMs = 0
+        deadlineMs = 0
+
+        emit RoundSettled(currentLeader, winnerPayout, carryToNext, savingsSlice)
+    }
+
+    @using(updateFields = true)
+    fn startRound(caller: Address, now: U256) -> () {
+        currentPot = nextRoundSeed + PLAY_COST
+        nextRoundSeed = 0
+        currentLeader = caller
+        currentDurationMs = INITIAL_DURATION_MS
+        deadlineMs = now + INITIAL_DURATION_MS
+        roundActive = true
+
+        emit Played(caller, currentPot, deadlineMs, currentDurationMs)
+    }
+}

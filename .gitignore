@@ -1,0 +1,13 @@
+node_modules/
+coverage/
+lerna-debug.log
+/dist
+/dev
+.deployments.devnet.json
+.deployments.testnet.json
+.deployments.mainnet.json
+.env
+.env.*
+frontend/.env
+frontend/.env.*
+.ralph-lsp/
