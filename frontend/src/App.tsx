@@ -268,8 +268,8 @@ function App() {
           </div>
         )}
 
-        <main className="grid flex-1 grid-rows-[1fr_auto] gap-4 md:grid-cols-[1fr_320px] md:grid-rows-1">
-          <section className="flex min-h-0 flex-col items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+        <main className="flex flex-1 flex-col gap-4">
+          <section className="flex min-h-0 flex-col items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/60 p-4 md:p-6">
             <p className="mb-3 text-sm text-slate-400">Each play halves the timer and makes you leader.</p>
             <div className="min-h-[120px] text-center md:min-h-[170px]">
               <AnimatePresence mode="popLayout">
@@ -287,6 +287,13 @@ function App() {
               <div className="mt-2 text-xs text-slate-500">Halved {halvedCount} times</div>
             </div>
 
+            <div className="mt-2 w-full max-w-md rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-center">
+              <div className="text-xs uppercase tracking-widest text-emerald-300">Current Pot</div>
+              <div className="mt-1 text-3xl font-extrabold text-emerald-200 md:text-4xl">
+                {attoToAlph(pot)} ALPH
+              </div>
+            </div>
+
             {isExpired && (
               <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-200">
                 GAME OVER — {state ? formatAddress(state.currentLeader) : '--'} won {attoToAlph(prizePot)} ALPH. Next round starts on next play.
@@ -296,7 +303,7 @@ function App() {
             <button
               onClick={play}
               disabled={!canPlay || playing || confirming}
-              className="mt-8 w-full max-w-sm rounded-2xl bg-emerald-500 px-6 py-5 text-xl font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-8 w-full max-w-md rounded-2xl bg-emerald-500 px-6 py-5 text-lg font-bold text-slate-950 transition hover:bg-emerald-400 md:text-xl disabled:cursor-not-allowed disabled:opacity-50"
             >
               {!walletAddress
                 ? 'CONNECT WALLET FIRST'
@@ -306,12 +313,11 @@ function App() {
                     ? 'Confirming...'
                     : 'PLAY — 1 ALPH'}
             </button>
-            <div className="mt-3 text-sm text-slate-300">Total pot: {attoToAlph(pot)} ALPH</div>
             <div className="mt-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm text-slate-100 shadow-[0_0_24px_rgba(16,185,129,0.2)]">
               👑 Current Leader: {state ? formatAddress(state.currentLeader) : '--'}
             </div>
 
-            <div className="mt-4 grid w-full max-w-xl grid-cols-3 gap-2 text-center">
+            <div className="mt-4 grid w-full max-w-xl grid-cols-1 gap-2 text-center sm:grid-cols-3">
               <div className="rounded-lg border border-slate-700 bg-slate-900 p-2">
                 <div className="text-[11px] text-slate-400">Prize Pot (80%)</div>
                 <div className="text-sm font-semibold">{attoToAlph(prizePot)} ALPH</div>
@@ -327,7 +333,7 @@ function App() {
             </div>
           </section>
 
-          <section className="flex min-h-0 flex-col rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+          <section className="flex min-h-[180px] flex-col rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-xs font-semibold tracking-widest text-slate-400">RECENT PLAYS</h2>
               <span className="text-xs text-slate-500">{feed.length} items</span>
