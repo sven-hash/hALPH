@@ -18,31 +18,25 @@ import { default as testnetDeployments } from "../../deployments/.deployments.te
 export type Deployments = {
   deployerAddress: string;
   contracts: {
-    CountdownGame?: DeployContractExecutionResult<CountdownGameInstance>;
-    CountdownBettingMarket?: DeployContractExecutionResult<CountdownBettingMarketInstance>;
+    CountdownGame: DeployContractExecutionResult<CountdownGameInstance>;
+    CountdownBettingMarket: DeployContractExecutionResult<CountdownBettingMarketInstance>;
   };
 };
 
 function toDeployments(json: any): Deployments {
   const contracts = {
-    CountdownGame:
-      json.contracts["CountdownGame"] === undefined
-        ? undefined
-        : {
-            ...json.contracts["CountdownGame"],
-            contractInstance: CountdownGame.at(
-              json.contracts["CountdownGame"].contractInstance.address
-            ),
-          },
-    CountdownBettingMarket:
-      json.contracts["CountdownBettingMarket"] === undefined
-        ? undefined
-        : {
-            ...json.contracts["CountdownBettingMarket"],
-            contractInstance: CountdownBettingMarket.at(
-              json.contracts["CountdownBettingMarket"].contractInstance.address
-            ),
-          },
+    CountdownGame: {
+      ...json.contracts["CountdownGame"],
+      contractInstance: CountdownGame.at(
+        json.contracts["CountdownGame"].contractInstance.address
+      ),
+    },
+    CountdownBettingMarket: {
+      ...json.contracts["CountdownBettingMarket"],
+      contractInstance: CountdownBettingMarket.at(
+        json.contracts["CountdownBettingMarket"].contractInstance.address
+      ),
+    },
   };
   return {
     ...json,
