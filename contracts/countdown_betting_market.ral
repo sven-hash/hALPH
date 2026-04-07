@@ -1,0 +1,163 @@
+Contract CountdownBettingMarket(
+    game: CountdownGame,
+    protocolFeeBps: U256,
+    mut feePot: U256
+) {
+    mapping[ByteVec, U256] totalPoolByRound
+    mapping[ByteVec, U256] poolByRoundAndTarget
+    mapping[ByteVec, U256] userBetByRoundAndBettor
+    mapping[ByteVec, Address] userTargetByRoundAndBettor
+    mapping[ByteVec, Bool] finalizedByRound
+    mapping[ByteVec, Address] winnerByRound
+
+    event BetPlaced(roundId: U256, bettor: Address, target: Address, amount: U256)
+    event RoundFinalized(roundId: U256, winner: Address, totalPool: U256, feeAmount: U256)
+    event Claimed(roundId: U256, bettor: Address, target: Address, payout: U256)
+
+    const BPS_DENOMINATOR = 10000
+    const MIN_BET = 1e17
+
+    enum ErrorCodes {
+        BetTooSmall = 0
+        RoundMismatch = 1
+        RoundClosed = 2
+        InvalidFeeBps = 3
+        TargetChanged = 4
+        NotFinalized = 5
+        NoBet = 6
+        RoundNotSettled = 7
+        AlreadyFinalized = 8
+    }
+
+    @using(preapprovedAssets = true, payToContractOnly = true, checkExternalCaller = false)
+    pub fn placeBet(roundId: U256, target: Address, amount: U256) -> () {
+        assert!(protocolFeeBps < BPS_DENOMINATOR, ErrorCodes.InvalidFeeBps)
+        assert!(amount >= MIN_BET, ErrorCodes.BetTooSmall)
+
+        let (roundActive, currentRoundId, deadlineMs, _) = game.getRoundSnapshot()
+        let now = blockTimeStamp!()
+        assert!(roundActive, ErrorCodes.RoundClosed)
+        assert!(currentRoundId == roundId, ErrorCodes.RoundMismatch)
+        assert!(now < deadlineMs, ErrorCodes.RoundClosed)
+
+        let bettor = callerAddress!()
+        transferTokenToSelf!(bettor, ALPH, amount)
+
+        let roundKey = encodeToByteVec!(roundId)
+        let targetKey = encodeToByteVec!(roundId, target)
+        let userKey = encodeToByteVec!(roundId, bettor)
+
+        if (totalPoolByRound.contains!(roundKey)) {
+            totalPoolByRound[roundKey] = totalPoolByRound[roundKey] + amount
+        } else {
+            totalPoolByRound.insert!(bettor, roundKey, amount)
+        }
+
+        if (poolByRoundAndTarget.contains!(targetKey)) {
+            poolByRoundAndTarget[targetKey] = poolByRoundAndTarget[targetKey] + amount
+        } else {
+            poolByRoundAndTarget.insert!(bettor, targetKey, amount)
+        }
+
+        if (userBetByRoundAndBettor.contains!(userKey)) {
+            let existingTarget = userTargetByRoundAndBettor[userKey]
+            assert!(existingTarget == target, ErrorCodes.TargetChanged)
+            userBetByRoundAndBettor[userKey] = userBetByRoundAndBettor[userKey] + amount
+        } else {
+            userBetByRoundAndBettor.insert!(bettor, userKey, amount)
+            userTargetByRoundAndBettor.insert!(bettor, userKey, target)
+        }
+
+        emit BetPlaced(roundId, bettor, target, amount)
+    }
+
+    @using(preapprovedAssets = true, updateFields = true, checkExternalCaller = false)
+    pub fn finalizeRound(roundId: U256) -> () {
+        let roundKey = encodeToByteVec!(roundId)
+        assert!(!finalizedByRound.contains!(roundKey), ErrorCodes.AlreadyFinalized)
+
+        let (settledRoundId, winner) = game.getLastSettledRound()
+        assert!(settledRoundId == roundId, ErrorCodes.RoundNotSettled)
+
+        let totalPool = if (totalPoolByRound.contains!(roundKey)) totalPoolByRound[roundKey] else 0
+        let feeAmount = totalPool * protocolFeeBps / BPS_DENOMINATOR
+        feePot = feePot + feeAmount
+
+        finalizedByRound.insert!(callerAddress!(), roundKey, true)
+        winnerByRound.insert!(callerAddress!(), roundKey, winner)
+
+        emit RoundFinalized(roundId, winner, totalPool, feeAmount)
+    }
+
+    @using(assetsInContract = true, updateFields = true, checkExternalCaller = false)
+    pub fn claim(roundId: U256) -> () {
+        let roundKey = encodeToByteVec!(roundId)
+        assert!(finalizedByRound.contains!(roundKey), ErrorCodes.NotFinalized)
+
+        let bettor = callerAddress!()
+        let userKey = encodeToByteVec!(roundId, bettor)
+        assert!(userBetByRoundAndBettor.contains!(userKey), ErrorCodes.NoBet)
+
+        let winner = winnerByRound[roundKey]
+        let target = userTargetByRoundAndBettor[userKey]
+        let betAmount = userBetByRoundAndBettor[userKey]
+
+        let payout = if (target == winner) {
+            let totalPool = if (totalPoolByRound.contains!(roundKey)) totalPoolByRound[roundKey] else 0
+            let winnerKey = encodeToByteVec!(roundId, winner)
+            let winnerPool = if (poolByRoundAndTarget.contains!(winnerKey)) poolByRoundAndTarget[winnerKey] else 0
+            if (winnerPool == 0) {
+                0
+            } else {
+                let feeAmount = totalPool * protocolFeeBps / BPS_DENOMINATOR
+                let netPool = totalPool - feeAmount
+                betAmount * netPool / winnerPool
+            }
+        } else {
+            0
+        }
+
+        userBetByRoundAndBettor.remove!(bettor, userKey)
+        userTargetByRoundAndBettor.remove!(bettor, userKey)
+
+        if (payout > 0) {
+            transferTokenFromSelf!(bettor, ALPH, payout)
+        }
+
+        emit Claimed(roundId, bettor, target, payout)
+    }
+
+    pub fn getRoundPools(roundId: U256, target: Address) -> (U256, U256) {
+        let roundKey = encodeToByteVec!(roundId)
+        let targetKey = encodeToByteVec!(roundId, target)
+        let roundPool = if (totalPoolByRound.contains!(roundKey)) totalPoolByRound[roundKey] else 0
+        let targetPool = if (poolByRoundAndTarget.contains!(targetKey)) poolByRoundAndTarget[targetKey] else 0
+        return roundPool, targetPool
+    }
+
+    pub fn getUserBet(roundId: U256, bettor: Address) -> (Bool, Address, U256) {
+        let userKey = encodeToByteVec!(roundId, bettor)
+        if (userBetByRoundAndBettor.contains!(userKey)) {
+            return true, userTargetByRoundAndBettor[userKey], userBetByRoundAndBettor[userKey]
+        } else {
+            return false, bettor, 0
+        }
+    }
+
+    pub fn quotePayout(roundId: U256, target: Address, amount: U256) -> U256 {
+        let roundKey = encodeToByteVec!(roundId)
+        let targetKey = encodeToByteVec!(roundId, target)
+        let roundPool = if (totalPoolByRound.contains!(roundKey)) totalPoolByRound[roundKey] else 0
+        let targetPool = if (poolByRoundAndTarget.contains!(targetKey)) poolByRoundAndTarget[targetKey] else 0
+        let nextRoundPool = roundPool + amount
+        let nextTargetPool = targetPool + amount
+        if (nextTargetPool == 0) {
+            return 0
+        } else {
+            let feeAmount = nextRoundPool * protocolFeeBps / BPS_DENOMINATOR
+            let netPool = nextRoundPool - feeAmount
+            return amount * netPool / nextTargetPool
+        }
+    }
+
+}
