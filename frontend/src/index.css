@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
 @import "tailwindcss";
 
 * {
@@ -7,9 +9,66 @@
 body {
   margin: 0;
   min-width: 320px;
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
 #root {
   min-height: 100vh;
+}
+
+.font-roman {
+  font-family: 'Cinzel', serif;
+}
+
+/* White marble background with subtle veining */
+.marble-bg {
+  background-color: #FAF9F6;
+  background-image: 
+    /* Subtle diagonal veins */
+    linear-gradient(135deg, transparent 40%, rgba(200, 195, 185, 0.15) 45%, transparent 50%),
+    linear-gradient(225deg, transparent 40%, rgba(200, 195, 185, 0.1) 45%, transparent 50%),
+    linear-gradient(45deg, transparent 60%, rgba(180, 175, 165, 0.08) 65%, transparent 70%),
+    linear-gradient(315deg, transparent 55%, rgba(190, 185, 175, 0.1) 60%, transparent 65%),
+    /* Very subtle noise texture */
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.015'/%3E%3C/svg%3E");
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 200px 200px;
+}
+
+/* Dark marble frame - black marble with white veining */
+.dark-marble-frame {
+  background-color: #1a1a1a;
+  background-image: 
+    /* White/grey veins on dark marble */
+    linear-gradient(125deg, transparent 30%, rgba(255, 255, 255, 0.08) 35%, transparent 40%),
+    linear-gradient(235deg, transparent 45%, rgba(255, 255, 255, 0.06) 50%, transparent 55%),
+    linear-gradient(55deg, transparent 60%, rgba(200, 200, 200, 0.05) 65%, transparent 70%),
+    linear-gradient(305deg, transparent 35%, rgba(255, 255, 255, 0.07) 40%, transparent 45%),
+    /* Subtle texture */
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 150px 150px;
+  padding: 12px;
+}
+
+/* Inner content area styling */
+.dark-marble-frame > div {
+  background: linear-gradient(180deg, #F8F5EF 0%, #F5F0E8 50%, #F2EDE5 100%);
+}
+
+/* Bronze/gold color */
+.text-bronze {
+  color: #C9A227;
+}
+
+.border-bronze {
+  border-color: #8B7355;
+}
+
+/* Subtle animations */
+@keyframes subtle-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.9; }
+}
+
+.animate-subtle-pulse {
+  animation: subtle-pulse 3s ease-in-out infinite;
 }
