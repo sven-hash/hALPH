@@ -26,6 +26,6 @@ declare module '../../deployments/.deployments.testnet.json' {
     migrations: Record<string, unknown>
   }
 
-  const deployments: Deployment[]
+  const deployments: Deployment | Deployment[]
   export default deployments
 }

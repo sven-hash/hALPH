@@ -9,8 +9,12 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Crown, Zap } from 'lucide-react'
 import deploymentsData from '../../deployments/.deployments.testnet.json'
 
+function getDeploymentsArray() {
+  return Array.isArray(deploymentsData) ? deploymentsData : [deploymentsData]
+}
+
 function getContractAddressFromDeployments(): string | undefined {
-  for (const deployment of deploymentsData) {
+  for (const deployment of getDeploymentsArray()) {
     const countdownGame = deployment.contracts?.CountdownGame
     if (countdownGame?.contractInstance?.address) {
       return countdownGame.contractInstance.address
@@ -20,7 +24,7 @@ function getContractAddressFromDeployments(): string | undefined {
 }
 
 function getBettingContractAddressFromDeployments(): string | undefined {
-  for (const deployment of deploymentsData) {
+  for (const deployment of getDeploymentsArray()) {
     const contracts = deployment.contracts as Record<string, { contractInstance?: { address?: string } }> | undefined
     const betting = contracts?.CountdownBettingMarket
     if (betting?.contractInstance?.address) {
