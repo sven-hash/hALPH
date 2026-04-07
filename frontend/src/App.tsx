@@ -365,31 +365,31 @@ function App() {
                           : `Enter the Arena — ${attoToAlph(currentPlayCost, 2)}`}
                 </button>
 
-                {/* Double Play Button - only show during active round */}
-                {isRoundActive && !isExpired && (
-                  <button
-                    onClick={() => play(true)}
-                    disabled={!canPlay || isBusy || !hasEnoughForDouble}
-                    className="mx-auto flex w-full max-w-xs items-center justify-center gap-2 rounded-sm border-2 border-[#C9A227] bg-[#C9A227]/10 px-8 py-3 font-roman text-sm font-semibold uppercase tracking-[0.2em] text-[#1C1C1C] transition-all duration-200 hover:bg-[#C9A227]/20 focus:outline-none focus:ring-2 focus:ring-[#C9A227]/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
-                  >
-                    <Zap size={16} className="text-[#C9A227]" />
-                    {!walletAddress
-                      ? 'Connect First'
-                      : !hasEnoughForDouble
-                        ? 'Need More ALPH'
-                        : playingDouble
-                          ? 'Submitting...'
-                          : confirming && playingDouble
-                            ? 'Confirming...'
-                            : `Double Down — ${attoToAlph(doublePlayCost, 2)}`}
-                  </button>
-                )}
+                {/* Double Play Button - always visible, disabled when no active round */}
+                <button
+                  onClick={() => play(true)}
+                  disabled={!canPlay || isBusy || !hasEnoughForDouble || !isRoundActive || isExpired}
+                  className="mx-auto flex w-full max-w-xs items-center justify-center gap-2 rounded-sm border-2 border-[#C9A227] bg-[#C9A227]/10 px-8 py-3 font-roman text-sm font-semibold uppercase tracking-[0.2em] text-[#1C1C1C] transition-all duration-200 hover:bg-[#C9A227]/20 focus:outline-none focus:ring-2 focus:ring-[#C9A227]/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
+                >
+                  <Zap size={16} className="text-[#C9A227]" />
+                  {!walletAddress
+                    ? 'Connect First'
+                    : !isRoundActive
+                      ? 'Start Round First'
+                      : isExpired
+                        ? 'Round Expired'
+                        : !hasEnoughForDouble
+                          ? 'Need More ALPH'
+                          : playingDouble
+                            ? 'Submitting...'
+                            : confirming && playingDouble
+                              ? 'Confirming...'
+                              : `Double Down — ${attoToAlph(doublePlayCost, 2)}`}
+                </button>
                 
-                {isRoundActive && !isExpired && (
-                  <p className="text-center text-[10px] italic text-[#1C1C1C]/50">
-                    Double down halves the timer twice (÷4)
-                  </p>
-                )}
+                <p className="text-center text-[10px] italic text-[#1C1C1C]/50">
+                  Double down halves the timer twice (÷4)
+                </p>
               </div>
 
               {/* Connect Alephium text */}
