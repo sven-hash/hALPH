@@ -8,14 +8,15 @@
     "ignoreUpdateFieldsCheckWarnings": false,
     "ignoreCheckExternalCallerWarnings": false,
     "ignoreUnusedFunctionReturnWarnings": false,
-    "skipAbstractContractCheck": false
+    "skipAbstractContractCheck": false,
+    "skipTests": true
   },
   "infos": {
     "CountdownGame": {
       "sourceFile": "countdown_game.ral",
-      "sourceCodeHash": "8bd9e6b382e234f6e751ffce7b0822df899002ff973adb4b4bb5b6697dd97b44",
+      "sourceCodeHash": "bf6fed43d1b6dc680e07efcba4e98dec01a4c2cb5c1627cb76ba33e722ae0bbd",
       "bytecodeDebugPatch": "",
-      "codeHashDebug": "494b178881827aaab6be75e4a4db4298c4bd6e52f3c943613067925c6c5c87ef"
+      "codeHashDebug": "e1ec20ad6f978cc8b3c4cd0272e403b96d69c40bcef20971c0d251b2fd8f9de1"
     },
     "IFungibleToken": {
       "sourceFile": "../node_modules/@alephium/web3/std/fungible_token_interface.ral",

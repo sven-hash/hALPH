@@ -1,28 +1,31 @@
 {
-  "version": "v4.4.0",
+  "version": "v4.3.0",
   "name": "CountdownGame",
-  "bytecode": "0703407140c5410501010003004034d366536a88b41700561701160013c40de0b6b3a7640000a9a0067a4c04181601a003344c010001a006194c0416001601000202a00113c40de0b6b3a76400002aa1011600a100a0020e2d170216020c2f4c020d17021602a102160116022aa103051600a001a003a002610002000300402da0011340502c1340642d1700a001130a2c1340642d1701a00116002b16012b170216000c334c03a0001600a81601a104a00516022aa10504a1060ca1010ca1020ca10306a00016001601160261000002020016a00413c40de0b6b3a76400002aa1010ca1041600a10013c23a1c00263800a102160113c23a1c002638002aa10303a106051600a001a003a00261",
-  "codeHash": "494b178881827aaab6be75e4a4db4298c4bd6e52f3c943613067925c6c5c87ef",
+  "bytecode": "08054048408040d7411b415b01010003004023d366536a88b41700561701a0054c02a0064a01ce00170216001602a9a0057a4c04181601a003344c010003a005194c041600160100044a0516001601160204000201010003001dd39d8c7543b41700561701a0057a4c04181601a003344c010003a0050d7ba0060e2c170216001602a91600160116020300020000040500402ca00116022aa1011600a10016034c06a002102d13800075302a4a05a0020e2d13800075302a170416040c330c7b1604a102160116042aa103a0061340652c1340642da106051600a001a003a00216027300020002004024a0011340502c1340642d1700a00116002b170116000c334c03a0001600a8a00416012aa10404a1050ca1010ca1020ca103ce00a10606a0001600160160000002020019ce00a1011600a10013c23a1c00263800a102160113c23a1c002638002aa10303a105ce001340652c1340642da106051600a001a003a002ce0073",
+  "codeHash": "e1ec20ad6f978cc8b3c4cd0272e403b96d69c40bcef20971c0d251b2fd8f9de1",
   "fieldsSig": {
     "names": [
+      "basePlayCost",
       "currentLeader",
       "currentPot",
       "currentDurationMs",
       "deadlineMs",
-      "nextRoundSeed",
       "savingsPot",
-      "roundActive"
+      "roundActive",
+      "currentPlayCost"
     ],
     "types": [
+      "U256",
       "Address",
       "U256",
       "U256",
       "U256",
       "U256",
-      "U256",
-      "Bool"
+      "Bool",
+      "U256"
     ],
     "isMutable": [
+      false,
       true,
       true,
       true,
@@ -39,10 +42,12 @@
         "player",
         "roundPot",
         "deadlineMs",
-        "durationMs"
+        "durationMs",
+        "playCost"
       ],
       "fieldTypes": [
         "Address",
+        "U256",
         "U256",
         "U256",
         "U256"
@@ -53,12 +58,10 @@
       "fieldNames": [
         "winner",
         "winnerPayout",
-        "nextSeed",
         "savingsAdded"
       ],
       "fieldTypes": [
         "Address",
-        "U256",
         "U256",
         "U256"
       ]
@@ -70,6 +73,35 @@
       "paramNames": [],
       "paramTypes": [],
       "paramIsMutable": [],
+      "returnTypes": []
+    },
+    {
+      "name": "playDouble",
+      "paramNames": [],
+      "paramTypes": [],
+      "paramIsMutable": [],
+      "returnTypes": []
+    },
+    {
+      "name": "continueRound",
+      "paramNames": [
+        "caller",
+        "now",
+        "playCost",
+        "isDouble"
+      ],
+      "paramTypes": [
+        "Address",
+        "U256",
+        "U256",
+        "Bool"
+      ],
+      "paramIsMutable": [
+        false,
+        false,
+        false,
+        false
+      ],
       "returnTypes": []
     },
     {
@@ -98,19 +130,39 @@
   ],
   "constants": [
     {
-      "name": "PLAY_COST",
-      "value": {
-        "type": "U256",
-        "value": "1000000000000000000"
-      }
-    },
-    {
       "name": "INITIAL_DURATION_MS",
       "value": {
         "type": "U256",
         "value": "63891936000000"
       }
+    },
+    {
+      "name": "THIRTY_SECONDS_MS",
+      "value": {
+        "type": "U256",
+        "value": "30000"
+      }
     }
   ],
-  "enums": []
+  "enums": [
+    {
+      "name": "ErrorCodes",
+      "fields": [
+        {
+          "name": "InvalidDuration",
+          "value": {
+            "type": "U256",
+            "value": "0"
+          }
+        },
+        {
+          "name": "RoundNotActive",
+          "value": {
+            "type": "U256",
+            "value": "1"
+          }
+        }
+      ]
+    }
+  ]
 }

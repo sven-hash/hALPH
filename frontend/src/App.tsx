@@ -5,11 +5,21 @@ import { CountdownGame } from '../../artifacts/ts/CountdownGame'
 import type { CountdownGameTypes } from '../../artifacts/ts/CountdownGame'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Crown } from 'lucide-react'
+import { Crown, Zap } from 'lucide-react'
+import deploymentsData from '../../deployments/.deployments.testnet.json'
 
-const DEFAULT_CONTRACT = '26NmnTSsUjkwA4ArkQkUsmiJC81tHCvWUrWh9eVxXf8ZM'
+function getContractAddressFromDeployments(): string | undefined {
+  for (const deployment of deploymentsData) {
+    const countdownGame = deployment.contracts?.CountdownGame
+    if (countdownGame?.contractInstance?.address) {
+      return countdownGame.contractInstance.address
+    }
+  }
+  return undefined
+}
+
 const DEFAULT_NODE_URL = 'https://node.testnet.alephium.org'
-const CONTRACT_ADDRESS = (import.meta.env.VITE_COUNTDOWN_CONTRACT_ADDRESS ?? DEFAULT_CONTRACT).trim()
+const CONTRACT_ADDRESS = import.meta.env.VITE_COUNTDOWN_CONTRACT_ADDRESS?.trim() || getContractAddressFromDeployments() || ''
 const NODE_URL = (import.meta.env.VITE_NODE_URL ?? DEFAULT_NODE_URL).trim() || DEFAULT_NODE_URL
 const fetcher: typeof fetch = (input, init) => window.fetch(input, init)
 
@@ -18,10 +28,10 @@ function formatAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
-function attoToAlph(atto: bigint): string {
+function attoToAlph(atto: bigint, decimals: number = 4): string {
   const base = 10n ** 18n
   const integer = atto / base
-  const fraction = (atto % base).toString().padStart(18, '0').slice(0, 4)
+  const fraction = (atto % base).toString().padStart(18, '0').slice(0, decimals)
   return `${integer.toString()}.${fraction}`
 }
 
@@ -118,16 +128,14 @@ function RomanColumn({ side }: { side: 'left' | 'right' }) {
 function App() {
   const [status, setStatus] = useState<string>('')
   const [playing, setPlaying] = useState(false)
+  const [playingDouble, setPlayingDouble] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [nowMs, setNowMs] = useState<bigint>(BigInt(Date.now()))
   const wallet = useWallet()
   const { balance, updateBalanceForTx } = useBalance()
 
-  const canPlay = useMemo(() => wallet !== undefined && CONTRACT_ADDRESS.length > 0, [wallet])
   const walletAddress = wallet?.account?.address
-  const playCost = CountdownGame.consts.PLAY_COST
   const availableAlph = BigInt(balance?.balance ?? '0')
-  const hasEnoughAlph = availableAlph >= playCost
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(BigInt(Date.now())), 1000)
@@ -154,31 +162,57 @@ function App() {
     refetchIntervalInBackground: true
   })
 
-  const play = async () => {
+  const basePlayCost = state?.basePlayCost ?? 5n * 10n ** 18n
+  const currentPlayCost = state?.roundActive ? state.currentPlayCost : basePlayCost
+  const doublePlayCost = currentPlayCost * 2n
+  const canPlay = wallet !== undefined && CONTRACT_ADDRESS.length > 0
+  const hasEnoughForSingle = availableAlph >= currentPlayCost
+  const hasEnoughForDouble = availableAlph >= doublePlayCost
+  const isRoundActive = state?.roundActive ?? false
+
+  const play = async (isDouble: boolean = false) => {
     if (wallet === undefined) {
       setStatus('Connect your Alephium wallet to enter the arena.')
       return
     }
-    if (!hasEnoughAlph) {
-      setStatus(`Insufficient tribute. You need at least ${attoToAlph(playCost)} ALPH.`)
+    const cost = isDouble ? doublePlayCost : currentPlayCost
+    const hasEnough = isDouble ? hasEnoughForDouble : hasEnoughForSingle
+    if (!hasEnough) {
+      setStatus(`Insufficient tribute. You need at least ${attoToAlph(cost, 2)} ALPH.`)
+      return
+    }
+    if (isDouble && !isRoundActive) {
+      setStatus('Double play is only available during an active round.')
       return
     }
     if (CONTRACT_ADDRESS.length === 0) {
       setStatus('Missing contract address.')
       return
     }
-    setPlaying(true)
+    
+    if (isDouble) {
+      setPlayingDouble(true)
+    } else {
+      setPlaying(true)
+    }
     setStatus('')
+    
     try {
       web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
       const game = CountdownGame.at(CONTRACT_ADDRESS)
       const signer = wallet.signer
       if (signer === undefined) throw new Error('Connected wallet has no signer.')
 
-      const result = await game.transact.play({
-        signer,
-        attoAlphAmount: CountdownGame.consts.PLAY_COST
-      })
+      const result = isDouble
+        ? await game.transact.playDouble({
+            signer,
+            attoAlphAmount: doublePlayCost
+          })
+        : await game.transact.play({
+            signer,
+            attoAlphAmount: currentPlayCost
+          })
+      
       updateBalanceForTx(result.txId)
       setStatus('Transaction submitted. Awaiting confirmation...')
       setConfirming(true)
@@ -190,6 +224,7 @@ function App() {
     } finally {
       setConfirming(false)
       setPlaying(false)
+      setPlayingDouble(false)
     }
   }
 
@@ -203,10 +238,10 @@ function App() {
   const pot = state?.currentPot ?? 0n
   const prizePot = (pot * 80n) / 100n
   const savingsPot = state?.savingsPot ?? 0n
-  const totalSavings = savingsPot + (pot * 10n) / 100n
+  const totalSavings = savingsPot + (pot * 20n) / 100n
   const halvedCount = state ? getHalvedCount(state.currentDurationMs) : 0
-  const nextEntryFee = attoToAlph(playCost)
   const isExpired = Boolean(state?.roundActive && timeLeftMs === 0n)
+  const isBusy = playing || playingDouble || confirming
 
   return (
     <div className="marble-bg min-h-screen">
@@ -281,7 +316,7 @@ function App() {
                     Opulentia
                   </p>
                   <p className="font-roman text-2xl font-semibold text-[#1C1C1C] sm:text-3xl">
-                    {attoToAlph(pot)}
+                    {attoToAlph(pot, 2)}
                   </p>
                   <p className="text-sm text-[#1C1C1C]/60">ALPH</p>
                 </div>
@@ -290,10 +325,10 @@ function App() {
                     Tributum
                   </p>
                   <p className="font-roman text-2xl font-semibold text-[#1C1C1C] sm:text-3xl">
-                    {nextEntryFee}
+                    {attoToAlph(currentPlayCost, 2)}
                   </p>
                   <p className="text-sm text-[#1C1C1C]/60">ALPH</p>
-                  <p className="mt-0.5 text-[10px] italic text-[#1C1C1C]/40">Next Entry Fee</p>
+                  <p className="mt-0.5 text-[10px] italic text-[#1C1C1C]/40">Current Entry Fee</p>
                 </div>
               </div>
 
@@ -307,35 +342,66 @@ function App() {
               {/* Expired State */}
               {isExpired && (
                 <div className="mb-4 rounded border border-[#C9A227]/40 bg-[#C9A227]/10 px-4 py-3 text-center text-sm text-[#1C1C1C]">
-                  <span className="font-semibold">Victory!</span> {state ? formatAddress(state.currentLeader) : '—'} claims {attoToAlph(prizePot)} ALPH.
+                  <span className="font-semibold">Victory!</span> {state ? formatAddress(state.currentLeader) : '—'} claims {attoToAlph(prizePot, 2)} ALPH.
                 </div>
               )}
 
-              {/* Enter the Arena Button */}
-              <button
-                onClick={play}
-                disabled={!canPlay || playing || confirming || !hasEnoughAlph}
-                className="mx-auto mb-3 block w-full max-w-xs rounded-sm border-2 border-[#8B7355] bg-transparent px-8 py-3 font-roman text-sm font-semibold uppercase tracking-[0.2em] text-[#1C1C1C] transition-all duration-200 hover:bg-[#8B7355]/10 focus:outline-none focus:ring-2 focus:ring-[#8B7355]/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
-              >
-                {!walletAddress
-                  ? 'Connect to Enter'
-                  : !hasEnoughAlph
-                    ? 'Insufficient Tribute'
-                    : playing
-                      ? 'Submitting...'
-                      : confirming
-                        ? 'Confirming...'
-                        : 'Enter the Arena'}
-              </button>
+              {/* Play Buttons */}
+              <div className="space-y-3">
+                {/* Single Play Button */}
+                <button
+                  onClick={() => play(false)}
+                  disabled={!canPlay || isBusy || !hasEnoughForSingle}
+                  className="mx-auto block w-full max-w-xs rounded-sm border-2 border-[#8B7355] bg-transparent px-8 py-3 font-roman text-sm font-semibold uppercase tracking-[0.2em] text-[#1C1C1C] transition-all duration-200 hover:bg-[#8B7355]/10 focus:outline-none focus:ring-2 focus:ring-[#8B7355]/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
+                >
+                  {!walletAddress
+                    ? 'Connect to Enter'
+                    : !hasEnoughForSingle
+                      ? 'Insufficient Tribute'
+                      : playing
+                        ? 'Submitting...'
+                        : confirming && !playingDouble
+                          ? 'Confirming...'
+                          : `Enter the Arena — ${attoToAlph(currentPlayCost, 2)}`}
+                </button>
+
+                {/* Double Play Button - only show during active round */}
+                {isRoundActive && !isExpired && (
+                  <button
+                    onClick={() => play(true)}
+                    disabled={!canPlay || isBusy || !hasEnoughForDouble}
+                    className="mx-auto flex w-full max-w-xs items-center justify-center gap-2 rounded-sm border-2 border-[#C9A227] bg-[#C9A227]/10 px-8 py-3 font-roman text-sm font-semibold uppercase tracking-[0.2em] text-[#1C1C1C] transition-all duration-200 hover:bg-[#C9A227]/20 focus:outline-none focus:ring-2 focus:ring-[#C9A227]/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
+                  >
+                    <Zap size={16} className="text-[#C9A227]" />
+                    {!walletAddress
+                      ? 'Connect First'
+                      : !hasEnoughForDouble
+                        ? 'Need More ALPH'
+                        : playingDouble
+                          ? 'Submitting...'
+                          : confirming && playingDouble
+                            ? 'Confirming...'
+                            : `Double Down — ${attoToAlph(doublePlayCost, 2)}`}
+                  </button>
+                )}
+                
+                {isRoundActive && !isExpired && (
+                  <p className="text-center text-[10px] italic text-[#1C1C1C]/50">
+                    Double down halves the timer twice (÷4)
+                  </p>
+                )}
+              </div>
 
               {/* Connect Alephium text */}
-              <p className="mb-2 text-center text-xs uppercase tracking-wider text-[#1C1C1C]/50">
-                Connect Alephium
-              </p>
+              {!walletAddress && (
+                <p className="mt-3 text-center text-xs uppercase tracking-wider text-[#1C1C1C]/50">
+                  Connect Alephium Wallet
+                </p>
+              )}
               
-              {walletAddress && !hasEnoughAlph && (
-                <p className="text-center text-xs text-[#1C1C1C]/50">
-                  You need at least {nextEntryFee} ALPH to enter.
+              {walletAddress && !hasEnoughForSingle && (
+                <p className="mt-3 text-center text-xs text-[#1C1C1C]/50">
+                  You need at least {attoToAlph(currentPlayCost, 2)} ALPH to enter.
                 </p>
               )}
             </div>
@@ -355,7 +421,7 @@ function App() {
                 Prize Pot (80%)
               </p>
               <p className="font-roman text-xl font-semibold text-[#1C1C1C] sm:text-2xl">
-                {attoToAlph(prizePot)}
+                {attoToAlph(prizePot, 2)}
               </p>
               <p className="text-xs text-[#1C1C1C]/50">ALPH</p>
             </div>
@@ -364,7 +430,7 @@ function App() {
                 Savings Pot (20%)
               </p>
               <p className="font-roman text-xl font-semibold text-[#1C1C1C] sm:text-2xl">
-                {attoToAlph(totalSavings)}
+                {attoToAlph(totalSavings, 2)}
               </p>
               <p className="text-xs text-[#1C1C1C]/50">ALPH</p>
             </div>
@@ -378,12 +444,12 @@ function App() {
       </div>
 
       {/* Loading Overlay */}
-      {(playing || confirming) && (
+      {isBusy && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-[#FAF9F6]/90 backdrop-blur-sm">
           <div className="rounded-sm border-2 border-[#8B7355] bg-white px-10 py-8 text-center shadow-2xl">
             <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-3 border-[#C9A227] border-t-transparent" />
             <p className="font-roman text-lg font-medium text-[#1C1C1C]">
-              {playing ? 'Submitting tribute...' : 'Awaiting confirmation...'}
+              {(playing || playingDouble) ? (playingDouble ? 'Submitting double tribute...' : 'Submitting tribute...') : 'Awaiting confirmation...'}
             </p>
             <p className="mt-1 text-sm text-[#1C1C1C]/50">
               Please wait

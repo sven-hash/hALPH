@@ -4,4 +4,5 @@
 
 export * from "./CountdownGame";
 export * from "./TokenFaucet";
+export * from "./contracts";
 export * from "./scripts";

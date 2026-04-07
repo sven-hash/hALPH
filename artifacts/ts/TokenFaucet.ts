@@ -147,7 +147,7 @@ class Factory extends ContractFactory<
     getSymbol: async (
       params: Omit<
         TestContractParamsWithoutMaps<TokenFaucetTypes.Fields, never>,
-        "testArgs"
+        "args"
       >
     ): Promise<TestContractResultWithoutMaps<HexString>> => {
       return testMethod(this, "getSymbol", params, getContractByCodeHash);
@@ -155,7 +155,7 @@ class Factory extends ContractFactory<
     getName: async (
       params: Omit<
         TestContractParamsWithoutMaps<TokenFaucetTypes.Fields, never>,
-        "testArgs"
+        "args"
       >
     ): Promise<TestContractResultWithoutMaps<HexString>> => {
       return testMethod(this, "getName", params, getContractByCodeHash);
@@ -163,7 +163,7 @@ class Factory extends ContractFactory<
     getDecimals: async (
       params: Omit<
         TestContractParamsWithoutMaps<TokenFaucetTypes.Fields, never>,
-        "testArgs"
+        "args"
       >
     ): Promise<TestContractResultWithoutMaps<bigint>> => {
       return testMethod(this, "getDecimals", params, getContractByCodeHash);
@@ -171,7 +171,7 @@ class Factory extends ContractFactory<
     getTotalSupply: async (
       params: Omit<
         TestContractParamsWithoutMaps<TokenFaucetTypes.Fields, never>,
-        "testArgs"
+        "args"
       >
     ): Promise<TestContractResultWithoutMaps<bigint>> => {
       return testMethod(this, "getTotalSupply", params, getContractByCodeHash);
@@ -179,7 +179,7 @@ class Factory extends ContractFactory<
     balance: async (
       params: Omit<
         TestContractParamsWithoutMaps<TokenFaucetTypes.Fields, never>,
-        "testArgs"
+        "args"
       >
     ): Promise<TestContractResultWithoutMaps<bigint>> => {
       return testMethod(this, "balance", params, getContractByCodeHash);
