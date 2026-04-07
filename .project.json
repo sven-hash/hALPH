@@ -1,5 +1,5 @@
 {
-  "fullNodeVersion": "v4.3.0",
+  "fullNodeVersion": "v4.4.0",
   "compilerOptionsUsed": {
     "ignoreUnusedConstantsWarnings": false,
     "ignoreUnusedVariablesWarnings": false,
@@ -9,7 +9,7 @@
     "ignoreCheckExternalCallerWarnings": false,
     "ignoreUnusedFunctionReturnWarnings": false,
     "skipAbstractContractCheck": false,
-    "skipTests": false
+    "skipTests": true
   },
   "infos": {
     "CountdownBettingMarket": {
@@ -20,9 +20,9 @@
     },
     "CountdownGame": {
       "sourceFile": "countdown_game.ral",
-      "sourceCodeHash": "04a2a006900d50c5e4fb0c978bf70bfc93e6871b5523224fccb7a5513a3cc42c",
+      "sourceCodeHash": "7cc1d68bd53d95d9c48dd0964b7d07279087e7f6c11ef3f85ade20a361e1532f",
       "bytecodeDebugPatch": "",
-      "codeHashDebug": "e068f1ee65e893c05a91910b0e24d7e0a596f719bd575c041c00f90a544d9f2e"
+      "codeHashDebug": "0de90dcb72f872b3ce37a60dfaf991a6dcd640bdf120f155bfc1b6a401e02662"
     },
     "IFungibleToken": {
       "sourceFile": "../node_modules/@alephium/web3/std/fungible_token_interface.ral",
