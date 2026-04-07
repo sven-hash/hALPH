@@ -47,11 +47,15 @@ export namespace CountdownGameTypes {
     savingsPot: bigint;
     roundActive: boolean;
     currentPlayCost: bigint;
+    currentRoundId: bigint;
+    lastSettledRoundId: bigint;
+    lastSettledWinner: Address;
   };
 
   export type State = ContractState<Fields>;
 
   export type PlayedEvent = ContractEvent<{
+    roundId: bigint;
     player: Address;
     roundPot: bigint;
     deadlineMs: bigint;
@@ -63,6 +67,11 @@ export namespace CountdownGameTypes {
     winnerPayout: bigint;
     savingsAdded: bigint;
   }>;
+  export type RoundStartedEvent = ContractEvent<{
+    roundId: bigint;
+    starter: Address;
+    deadlineMs: bigint;
+  }>;
 
   export interface CallMethodTable {
     play: {
@@ -72,6 +81,18 @@ export namespace CountdownGameTypes {
     playDouble: {
       params: Omit<CallContractParams<{}>, "args">;
       result: CallContractResult<null>;
+    };
+    settleRound: {
+      params: Omit<CallContractParams<{}>, "args">;
+      result: CallContractResult<null>;
+    };
+    getRoundSnapshot: {
+      params: Omit<CallContractParams<{}>, "args">;
+      result: CallContractResult<[boolean, bigint, bigint, Address]>;
+    };
+    getLastSettledRound: {
+      params: Omit<CallContractParams<{}>, "args">;
+      result: CallContractResult<[bigint, Address]>;
     };
     continueRound: {
       params: CallContractParams<{
@@ -116,6 +137,18 @@ export namespace CountdownGameTypes {
       params: Omit<SignExecuteContractMethodParams<{}>, "args">;
       result: SignExecuteScriptTxResult;
     };
+    settleRound: {
+      params: Omit<SignExecuteContractMethodParams<{}>, "args">;
+      result: SignExecuteScriptTxResult;
+    };
+    getRoundSnapshot: {
+      params: Omit<SignExecuteContractMethodParams<{}>, "args">;
+      result: SignExecuteScriptTxResult;
+    };
+    getLastSettledRound: {
+      params: Omit<SignExecuteContractMethodParams<{}>, "args">;
+      result: SignExecuteScriptTxResult;
+    };
     continueRound: {
       params: SignExecuteContractMethodParams<{
         caller: Address;
@@ -152,11 +185,15 @@ class Factory extends ContractFactory<
     );
   }
 
-  eventIndex = { Played: 0, RoundSettled: 1 };
+  eventIndex = { Played: 0, RoundSettled: 1, RoundStarted: 2 };
   consts = {
     INITIAL_DURATION_MS: BigInt("63891936000000"),
     THIRTY_SECONDS_MS: BigInt("30000"),
-    ErrorCodes: { InvalidDuration: BigInt("0"), RoundNotActive: BigInt("1") },
+    ErrorCodes: {
+      InvalidDuration: BigInt("0"),
+      RoundNotActive: BigInt("1"),
+      InvalidBasePlayCost: BigInt("2"),
+    },
   };
 
   at(address: string): CountdownGameInstance {
@@ -179,6 +216,42 @@ class Factory extends ContractFactory<
       >
     ): Promise<TestContractResultWithoutMaps<null>> => {
       return testMethod(this, "playDouble", params, getContractByCodeHash);
+    },
+    settleRound: async (
+      params: Omit<
+        TestContractParamsWithoutMaps<CountdownGameTypes.Fields, never>,
+        "args"
+      >
+    ): Promise<TestContractResultWithoutMaps<null>> => {
+      return testMethod(this, "settleRound", params, getContractByCodeHash);
+    },
+    getRoundSnapshot: async (
+      params: Omit<
+        TestContractParamsWithoutMaps<CountdownGameTypes.Fields, never>,
+        "args"
+      >
+    ): Promise<
+      TestContractResultWithoutMaps<[boolean, bigint, bigint, Address]>
+    > => {
+      return testMethod(
+        this,
+        "getRoundSnapshot",
+        params,
+        getContractByCodeHash
+      );
+    },
+    getLastSettledRound: async (
+      params: Omit<
+        TestContractParamsWithoutMaps<CountdownGameTypes.Fields, never>,
+        "args"
+      >
+    ): Promise<TestContractResultWithoutMaps<[bigint, Address]>> => {
+      return testMethod(
+        this,
+        "getLastSettledRound",
+        params,
+        getContractByCodeHash
+      );
     },
     continueRound: async (
       params: TestContractParamsWithoutMaps<
@@ -225,7 +298,7 @@ export const CountdownGame = new Factory(
   Contract.fromJson(
     CountdownGameContractJson,
     "",
-    "e1ec20ad6f978cc8b3c4cd0272e403b96d69c40bcef20971c0d251b2fd8f9de1",
+    "e068f1ee65e893c05a91910b0e24d7e0a596f719bd575c041c00f90a544d9f2e",
     []
   )
 );
@@ -271,9 +344,24 @@ export class CountdownGameInstance extends ContractInstance {
     );
   }
 
+  subscribeRoundStartedEvent(
+    options: EventSubscribeOptions<CountdownGameTypes.RoundStartedEvent>,
+    fromCount?: number
+  ): EventSubscription {
+    return subscribeContractEvent(
+      CountdownGame.contract,
+      this,
+      options,
+      "RoundStarted",
+      fromCount
+    );
+  }
+
   subscribeAllEvents(
     options: EventSubscribeOptions<
-      CountdownGameTypes.PlayedEvent | CountdownGameTypes.RoundSettledEvent
+      | CountdownGameTypes.PlayedEvent
+      | CountdownGameTypes.RoundSettledEvent
+      | CountdownGameTypes.RoundStartedEvent
     >,
     fromCount?: number
   ): EventSubscription {
@@ -304,6 +392,39 @@ export class CountdownGameInstance extends ContractInstance {
         CountdownGame,
         this,
         "playDouble",
+        params === undefined ? {} : params,
+        getContractByCodeHash
+      );
+    },
+    settleRound: async (
+      params?: CountdownGameTypes.CallMethodParams<"settleRound">
+    ): Promise<CountdownGameTypes.CallMethodResult<"settleRound">> => {
+      return callMethod(
+        CountdownGame,
+        this,
+        "settleRound",
+        params === undefined ? {} : params,
+        getContractByCodeHash
+      );
+    },
+    getRoundSnapshot: async (
+      params?: CountdownGameTypes.CallMethodParams<"getRoundSnapshot">
+    ): Promise<CountdownGameTypes.CallMethodResult<"getRoundSnapshot">> => {
+      return callMethod(
+        CountdownGame,
+        this,
+        "getRoundSnapshot",
+        params === undefined ? {} : params,
+        getContractByCodeHash
+      );
+    },
+    getLastSettledRound: async (
+      params?: CountdownGameTypes.CallMethodParams<"getLastSettledRound">
+    ): Promise<CountdownGameTypes.CallMethodResult<"getLastSettledRound">> => {
+      return callMethod(
+        CountdownGame,
+        this,
+        "getLastSettledRound",
         params === undefined ? {} : params,
         getContractByCodeHash
       );
@@ -354,6 +475,30 @@ export class CountdownGameInstance extends ContractInstance {
     ): Promise<CountdownGameTypes.SignExecuteMethodResult<"playDouble">> => {
       return signExecuteMethod(CountdownGame, this, "playDouble", params);
     },
+    settleRound: async (
+      params: CountdownGameTypes.SignExecuteMethodParams<"settleRound">
+    ): Promise<CountdownGameTypes.SignExecuteMethodResult<"settleRound">> => {
+      return signExecuteMethod(CountdownGame, this, "settleRound", params);
+    },
+    getRoundSnapshot: async (
+      params: CountdownGameTypes.SignExecuteMethodParams<"getRoundSnapshot">
+    ): Promise<
+      CountdownGameTypes.SignExecuteMethodResult<"getRoundSnapshot">
+    > => {
+      return signExecuteMethod(CountdownGame, this, "getRoundSnapshot", params);
+    },
+    getLastSettledRound: async (
+      params: CountdownGameTypes.SignExecuteMethodParams<"getLastSettledRound">
+    ): Promise<
+      CountdownGameTypes.SignExecuteMethodResult<"getLastSettledRound">
+    > => {
+      return signExecuteMethod(
+        CountdownGame,
+        this,
+        "getLastSettledRound",
+        params
+      );
+    },
     continueRound: async (
       params: CountdownGameTypes.SignExecuteMethodParams<"continueRound">
     ): Promise<CountdownGameTypes.SignExecuteMethodResult<"continueRound">> => {
@@ -377,4 +522,23 @@ export class CountdownGameInstance extends ContractInstance {
       return signExecuteMethod(CountdownGame, this, "startRound", params);
     },
   };
+
+  async multicall<Calls extends CountdownGameTypes.MultiCallParams>(
+    calls: Calls
+  ): Promise<CountdownGameTypes.MultiCallResults<Calls>>;
+  async multicall<Callss extends CountdownGameTypes.MultiCallParams[]>(
+    callss: Narrow<Callss>
+  ): Promise<CountdownGameTypes.MulticallReturnType<Callss>>;
+  async multicall<
+    Callss extends
+      | CountdownGameTypes.MultiCallParams
+      | CountdownGameTypes.MultiCallParams[]
+  >(callss: Callss): Promise<unknown> {
+    return await multicallMethods(
+      CountdownGame,
+      this,
+      callss,
+      getContractByCodeHash
+    );
+  }
 }

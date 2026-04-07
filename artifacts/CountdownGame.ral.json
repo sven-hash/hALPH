@@ -1,8 +1,8 @@
 {
   "version": "v4.3.0",
   "name": "CountdownGame",
-  "bytecode": "08054048408040d7411b415b01010003004023d366536a88b41700561701a0054c02a0064a01ce00170216001602a9a0057a4c04181601a003344c010003a005194c041600160100044a0516001601160204000201010003001dd39d8c7543b41700561701a0057a4c04181601a003344c010003a0050d7ba0060e2c170216001602a91600160116020300020000040500402ca00116022aa1011600a10016034c06a002102d13800075302a4a05a0020e2d13800075302a170416040c330c7b1604a102160116042aa103a0061340652c1340642da106051600a001a003a00216027300020002004024a0011340502c1340642d1700a00116002b170116000c334c03a0001600a8a00416012aa10404a1050ca1010ca1020ca103ce00a10606a0001600160160000002020019ce00a1011600a10013c23a1c00263800a102160113c23a1c002638002aa10303a105ce001340652c1340642da106051600a001a003a002ce0073",
-  "codeHash": "e1ec20ad6f978cc8b3c4cd0272e403b96d69c40bcef20971c0d251b2fd8f9de1",
+  "bytecode": "0b084046407e409b40af40bf4118416c41b001010003004024d366536a88b41700561701ce000c330e7ba0057a4c04181601a003344c010006a006170216001602a9a005194c041600160100074a0516001601160204000501010003001dd39d8c7543b41700561701a0057a4c04181601a003344c010006a0050d7ba0060e2c170216001602a916001601160203000501000001000cd38d255f8b561700a0057a4c04181600a003344c010006010000000406d3ab88bf04a005a007a003a00002010000000204d3db2d4447a008a009020000040500402da00116022aa1011600a10016034c06a002102d13800075302a4a05a0020e2d13800075302a170416040c330c7b1604a102160116042aa103a0061340652c1340642da10605a0071600a001a003a0021602740002000200402ca0011340502c1340642d1700a00116002b170116000c334c03a0001600a8a00416012aa10404a105a007a108a000a1090ca1010ca1020ca103a0061340652c1340642da10606a000160016016000000202001da0070d2aa107a006a1011600a10013c23a1c00263800a102160113c23a1c002638002aa10303a10507a0071600a0036005a0071600a001a003a002a00674",
+  "codeHash": "e068f1ee65e893c05a91910b0e24d7e0a596f719bd575c041c00f90a544d9f2e",
   "fieldsSig": {
     "names": [
       "basePlayCost",
@@ -12,7 +12,10 @@
       "deadlineMs",
       "savingsPot",
       "roundActive",
-      "currentPlayCost"
+      "currentPlayCost",
+      "currentRoundId",
+      "lastSettledRoundId",
+      "lastSettledWinner"
     ],
     "types": [
       "U256",
@@ -22,10 +25,16 @@
       "U256",
       "U256",
       "Bool",
-      "U256"
+      "U256",
+      "U256",
+      "U256",
+      "Address"
     ],
     "isMutable": [
       false,
+      true,
+      true,
+      true,
       true,
       true,
       true,
@@ -39,6 +48,7 @@
     {
       "name": "Played",
       "fieldNames": [
+        "roundId",
         "player",
         "roundPot",
         "deadlineMs",
@@ -46,6 +56,7 @@
         "playCost"
       ],
       "fieldTypes": [
+        "U256",
         "Address",
         "U256",
         "U256",
@@ -65,6 +76,19 @@
         "U256",
         "U256"
       ]
+    },
+    {
+      "name": "RoundStarted",
+      "fieldNames": [
+        "roundId",
+        "starter",
+        "deadlineMs"
+      ],
+      "fieldTypes": [
+        "U256",
+        "Address",
+        "U256"
+      ]
     }
   ],
   "functions": [
@@ -81,6 +105,35 @@
       "paramTypes": [],
       "paramIsMutable": [],
       "returnTypes": []
+    },
+    {
+      "name": "settleRound",
+      "paramNames": [],
+      "paramTypes": [],
+      "paramIsMutable": [],
+      "returnTypes": []
+    },
+    {
+      "name": "getRoundSnapshot",
+      "paramNames": [],
+      "paramTypes": [],
+      "paramIsMutable": [],
+      "returnTypes": [
+        "Bool",
+        "U256",
+        "U256",
+        "Address"
+      ]
+    },
+    {
+      "name": "getLastSettledRound",
+      "paramNames": [],
+      "paramTypes": [],
+      "paramIsMutable": [],
+      "returnTypes": [
+        "U256",
+        "Address"
+      ]
     },
     {
       "name": "continueRound",
@@ -160,6 +213,13 @@
           "value": {
             "type": "U256",
             "value": "1"
+          }
+        },
+        {
+          "name": "InvalidBasePlayCost",
+          "value": {
+            "type": "U256",
+            "value": "2"
           }
         }
       ]

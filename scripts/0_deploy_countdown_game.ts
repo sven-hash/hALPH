@@ -15,7 +15,10 @@ const deployCountdownGame: DeployFunction<Settings> = async (
       deadlineMs: 0n,
       savingsPot: 0n,
       roundActive: false,
-      currentPlayCost: 5n * 10n ** 18n
+      currentPlayCost: 5n * 10n ** 18n,
+      currentRoundId: 0n,
+      lastSettledRoundId: 0n,
+      lastSettledWinner: deployer.account.address
     }
   })
 

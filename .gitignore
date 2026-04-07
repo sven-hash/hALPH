@@ -3,8 +3,6 @@ coverage/
 lerna-debug.log
 /dist
 /dev
-.deployments.devnet.json
-.deployments.mainnet.json
 .env
 .env.*
 frontend/.env

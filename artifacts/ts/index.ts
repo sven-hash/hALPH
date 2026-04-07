@@ -2,6 +2,7 @@
 /* tslint:disable */
 /* eslint-disable */
 
+export * from "./CountdownBettingMarket";
 export * from "./CountdownGame";
 export * from "./TokenFaucet";
 export * from "./contracts";

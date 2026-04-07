@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { waitForTxConfirmation, web3 } from '@alephium/web3'
-import { AlephiumConnectButton, useBalance, useWallet } from '@alephium/web3-react'
+import { AlephiumConnectButton, useBalance, useWallet, useConnect } from '@alephium/web3-react'
 import { CountdownGame } from '../../artifacts/ts/CountdownGame'
+import { CountdownBettingMarket } from '../../artifacts/ts/CountdownBettingMarket'
 import type { CountdownGameTypes } from '../../artifacts/ts/CountdownGame'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -18,8 +19,21 @@ function getContractAddressFromDeployments(): string | undefined {
   return undefined
 }
 
+function getBettingContractAddressFromDeployments(): string | undefined {
+  for (const deployment of deploymentsData) {
+    const contracts = deployment.contracts as Record<string, { contractInstance?: { address?: string } }> | undefined
+    const betting = contracts?.CountdownBettingMarket
+    if (betting?.contractInstance?.address) {
+      return betting.contractInstance.address
+    }
+  }
+  return undefined
+}
+
 const DEFAULT_NODE_URL = 'https://node.testnet.alephium.org'
 const CONTRACT_ADDRESS = import.meta.env.VITE_COUNTDOWN_CONTRACT_ADDRESS?.trim() || getContractAddressFromDeployments() || ''
+const BETTING_CONTRACT_ADDRESS =
+  import.meta.env.VITE_BETTING_CONTRACT_ADDRESS?.trim() || getBettingContractAddressFromDeployments() || ''
 const NODE_URL = (import.meta.env.VITE_NODE_URL ?? DEFAULT_NODE_URL).trim() || DEFAULT_NODE_URL
 const fetcher: typeof fetch = (input, init) => window.fetch(input, init)
 
@@ -33,6 +47,14 @@ function attoToAlph(atto: bigint, decimals: number = 4): string {
   const integer = atto / base
   const fraction = (atto % base).toString().padStart(18, '0').slice(0, decimals)
   return `${integer.toString()}.${fraction}`
+}
+
+function alphToAtto(value: string): bigint | null {
+  const normalized = value.trim()
+  if (!/^\d+(\.\d+)?$/.test(normalized)) return null
+  const [whole, fraction = ''] = normalized.split('.')
+  const paddedFraction = (fraction + '0'.repeat(18)).slice(0, 18)
+  return BigInt(whole) * 10n ** 18n + BigInt(paddedFraction)
 }
 
 type TimerPart = { value: string; unit: string }
@@ -126,13 +148,21 @@ function RomanColumn({ side }: { side: 'left' | 'right' }) {
 }
 
 function App() {
+  const [activePage, setActivePage] = useState<'game' | 'betting'>('game')
   const [status, setStatus] = useState<string>('')
+  const [betStatus, setBetStatus] = useState<string>('')
   const [playing, setPlaying] = useState(false)
   const [playingDouble, setPlayingDouble] = useState(false)
+  const [placingBet, setPlacingBet] = useState(false)
+  const [finalizingBetRound, setFinalizingBetRound] = useState(false)
+  const [claimingBet, setClaimingBet] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [betTarget, setBetTarget] = useState('')
+  const [betAmountInput, setBetAmountInput] = useState('1')
   const [nowMs, setNowMs] = useState<bigint>(BigInt(Date.now()))
   const wallet = useWallet()
   const { balance, updateBalanceForTx } = useBalance()
+  const { connect } = useConnect()
 
   const walletAddress = wallet?.account?.address
   const availableAlph = BigInt(balance?.balance ?? '0')
@@ -162,6 +192,22 @@ function App() {
     refetchIntervalInBackground: true
   })
 
+  const { data: bettingState } = useQuery({
+    queryKey: ['betting-state', NODE_URL, BETTING_CONTRACT_ADDRESS],
+    queryFn: async () => {
+      if (BETTING_CONTRACT_ADDRESS.length === 0) {
+        throw new Error('Missing betting contract address')
+      }
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
+      const nextState = await market.fetchState()
+      return nextState.fields
+    },
+    enabled: BETTING_CONTRACT_ADDRESS.length > 0,
+    refetchInterval: 4000,
+    refetchIntervalInBackground: true
+  })
+
   const basePlayCost = state?.basePlayCost ?? 5n * 10n ** 18n
   const currentPlayCost = state?.roundActive ? state.currentPlayCost : basePlayCost
   const doublePlayCost = currentPlayCost * 2n
@@ -169,6 +215,92 @@ function App() {
   const hasEnoughForSingle = availableAlph >= currentPlayCost
   const hasEnoughForDouble = availableAlph >= doublePlayCost
   const isRoundActive = state?.roundActive ?? false
+  const currentRoundId = state?.currentRoundId ?? 0n
+  const minBet = CountdownBettingMarket.consts.MIN_BET
+  const betAmount = alphToAtto(betAmountInput)
+  const canPlaceBet =
+    wallet !== undefined &&
+    BETTING_CONTRACT_ADDRESS.length > 0 &&
+    state?.roundActive === true &&
+    betTarget.trim().length > 0 &&
+    betAmount !== null &&
+    betAmount >= minBet &&
+    availableAlph >= betAmount
+
+  const { data: myBet } = useQuery({
+    queryKey: ['my-bet', NODE_URL, BETTING_CONTRACT_ADDRESS, currentRoundId.toString(), walletAddress],
+    queryFn: async () => {
+      if (!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0) return null
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
+      const result = await market.view.getUserBet({
+        args: {
+          roundId: currentRoundId,
+          bettor: walletAddress
+        }
+      })
+      return result.returns
+    },
+    enabled: Boolean(walletAddress) && BETTING_CONTRACT_ADDRESS.length > 0 && currentRoundId > 0n,
+    refetchInterval: 4000,
+    refetchIntervalInBackground: true
+  })
+
+  const { data: payoutQuote } = useQuery({
+    queryKey: ['bet-quote', NODE_URL, BETTING_CONTRACT_ADDRESS, currentRoundId.toString(), betTarget, betAmountInput],
+    queryFn: async () => {
+      if (BETTING_CONTRACT_ADDRESS.length === 0 || betAmount === null || betAmount <= 0n || betTarget.trim().length === 0) {
+        return null
+      }
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
+      const result = await market.view.quotePayout({
+        args: {
+          roundId: currentRoundId,
+          target: betTarget.trim(),
+          amount: betAmount
+        }
+      })
+      return result.returns
+    },
+    enabled:
+      BETTING_CONTRACT_ADDRESS.length > 0 &&
+      currentRoundId > 0n &&
+      betAmount !== null &&
+      betAmount > 0n &&
+      betTarget.trim().length > 0
+  })
+
+  const { data: playedPlayers = [] } = useQuery<string[]>({
+    queryKey: ['played-players', NODE_URL, CONTRACT_ADDRESS, currentRoundId.toString()],
+    queryFn: async () => {
+      if (CONTRACT_ADDRESS.length === 0) return []
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const provider = web3.getCurrentNodeProvider()
+      let start = 0
+      const players: string[] = []
+      for (let i = 0; i < 100; i += 1) {
+        const page = await provider.events.getEventsContractContractaddress(CONTRACT_ADDRESS, { start })
+        for (const event of page.events) {
+          if (event.eventIndex !== CountdownGame.eventIndex.Played) continue
+          const roundField = event.fields[0]
+          const playerField = event.fields[1]
+          if (typeof roundField?.value === 'string' && typeof playerField?.value === 'string') {
+            if (BigInt(roundField.value) === currentRoundId) {
+              players.push(playerField.value)
+            }
+          }
+        }
+        if (page.nextStart === start) break
+        start = page.nextStart
+      }
+      const uniqueLatestFirst = [...new Set(players.reverse())]
+      return uniqueLatestFirst
+    },
+    enabled: CONTRACT_ADDRESS.length > 0,
+    refetchInterval: 8000,
+    refetchIntervalInBackground: true
+  })
 
   const play = async (isDouble: boolean = false) => {
     if (wallet === undefined) {
@@ -228,6 +360,122 @@ function App() {
     }
   }
 
+  const placeBet = async () => {
+    if (wallet === undefined) {
+      setBetStatus('Connect your wallet to place a bet.')
+      return
+    }
+    if (BETTING_CONTRACT_ADDRESS.length === 0) {
+      setBetStatus('Missing betting contract address.')
+      return
+    }
+    if (!state?.roundActive) {
+      setBetStatus('Betting is open only during an active round.')
+      return
+    }
+    const target = betTarget.trim()
+    if (target.length === 0) {
+      setBetStatus('Enter the target address you want to back.')
+      return
+    }
+    if (!selectablePlayers.includes(target)) {
+      setBetStatus('Choose a player from the on-chain played list.')
+      return
+    }
+    if (betAmount === null || betAmount < minBet) {
+      setBetStatus(`Minimum bet is ${attoToAlph(minBet, 2)} ALPH.`)
+      return
+    }
+    if (availableAlph < betAmount) {
+      setBetStatus('Insufficient ALPH balance for this bet.')
+      return
+    }
+
+    setPlacingBet(true)
+    setConfirming(true)
+    setBetStatus('')
+    try {
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
+      const signer = wallet.signer
+      if (signer === undefined) throw new Error('Connected wallet has no signer.')
+      const result = await market.transact.placeBet({
+        signer,
+        args: {
+          roundId: currentRoundId,
+          target,
+          amount: betAmount
+        },
+        attoAlphAmount: betAmount + 5n * 10n ** 17n
+      })
+      updateBalanceForTx(result.txId)
+      setBetStatus('Bet submitted. Awaiting confirmation...')
+      await waitForTxConfirmation(result.txId, 1, 1000)
+      setBetStatus('Bet confirmed on-chain.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setBetStatus(`Bet failed: ${message}`)
+    } finally {
+      setPlacingBet(false)
+      setConfirming(false)
+    }
+  }
+
+  const finalizeBettingRound = async () => {
+    if (wallet === undefined || BETTING_CONTRACT_ADDRESS.length === 0 || currentRoundId === 0n) return
+    setFinalizingBetRound(true)
+    setConfirming(true)
+    setBetStatus('')
+    try {
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
+      const signer = wallet.signer
+      if (signer === undefined) throw new Error('Connected wallet has no signer.')
+      const result = await market.transact.finalizeRound({
+        signer,
+        args: { roundId: currentRoundId },
+        attoAlphAmount: 3n * 10n ** 17n
+      })
+      updateBalanceForTx(result.txId)
+      setBetStatus('Finalize submitted. Awaiting confirmation...')
+      await waitForTxConfirmation(result.txId, 1, 1000)
+      setBetStatus('Round finalized for betting.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setBetStatus(`Finalize failed: ${message}`)
+    } finally {
+      setFinalizingBetRound(false)
+      setConfirming(false)
+    }
+  }
+
+  const claimBet = async () => {
+    if (wallet === undefined || BETTING_CONTRACT_ADDRESS.length === 0 || currentRoundId === 0n) return
+    setClaimingBet(true)
+    setConfirming(true)
+    setBetStatus('')
+    try {
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
+      const signer = wallet.signer
+      if (signer === undefined) throw new Error('Connected wallet has no signer.')
+      const result = await market.transact.claim({
+        signer,
+        args: { roundId: currentRoundId }
+      })
+      updateBalanceForTx(result.txId)
+      setBetStatus('Claim submitted. Awaiting confirmation...')
+      await waitForTxConfirmation(result.txId, 1, 1000)
+      setBetStatus('Claim settled.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setBetStatus(`Claim failed: ${message}`)
+    } finally {
+      setClaimingBet(false)
+      setConfirming(false)
+    }
+  }
+
   const timeLeftMs = useMemo(() => {
     if (!state || !state.roundActive) return 0n
     if (state.deadlineMs <= nowMs) return 0n
@@ -241,7 +489,20 @@ function App() {
   const totalSavings = savingsPot + (pot * 20n) / 100n
   const halvedCount = state ? getHalvedCount(state.currentDurationMs) : 0
   const isExpired = Boolean(state?.roundActive && timeLeftMs === 0n)
-  const isBusy = playing || playingDouble || confirming
+  const hasMyBet = Boolean(myBet?.[0])
+  const myBetTarget = hasMyBet ? myBet?.[1] : undefined
+  const myBetAmount = hasMyBet ? myBet?.[2] ?? 0n : 0n
+  const isBusy = playing || playingDouble || placingBet || finalizingBetRound || claimingBet || confirming
+  const selectablePlayers = useMemo(() => {
+    if (!state?.currentLeader) return playedPlayers
+    return playedPlayers.includes(state.currentLeader) ? playedPlayers : [state.currentLeader, ...playedPlayers]
+  }, [playedPlayers, state?.currentLeader])
+
+  useEffect(() => {
+    if (betTarget.length > 0) return
+    if (selectablePlayers.length === 0) return
+    setBetTarget(selectablePlayers[0])
+  }, [betTarget, selectablePlayers])
 
   return (
     <div className="marble-bg min-h-screen">
@@ -261,16 +522,32 @@ function App() {
           <p className="mt-2 text-base font-light italic tracking-wide text-[#1C1C1C]/60 sm:text-lg">
             Timer-halving survival game
           </p>
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={() => setActivePage('game')}
+              className={`rounded border px-4 py-1 text-xs font-semibold uppercase tracking-wider ${activePage === 'game' ? 'border-[#8B7355] bg-[#8B7355]/15 text-[#1C1C1C]' : 'border-[#1C1C1C]/25 bg-white/50 text-[#1C1C1C]/70'}`}
+            >
+              Game
+            </button>
+            <button
+              onClick={() => setActivePage('betting')}
+              className={`rounded border px-4 py-1 text-xs font-semibold uppercase tracking-wider ${activePage === 'betting' ? 'border-[#8B7355] bg-[#8B7355]/15 text-[#1C1C1C]' : 'border-[#1C1C1C]/25 bg-white/50 text-[#1C1C1C]/70'}`}
+            >
+              Betting
+            </button>
+          </div>
         </div>
 
-        {/* Main Game Section with Columns */}
-        <div className="flex w-full items-stretch justify-center">
-          <RomanColumn side="left" />
-          
-          {/* Dark Marble Frame */}
-          <div className="dark-marble-frame relative w-full max-w-xl overflow-hidden rounded-sm border-4 border-[#8B7355] shadow-2xl">
-            {/* Inner cream/white content area */}
-            <div className="relative bg-[#F5F0E8] px-6 py-8 sm:px-10 sm:py-10">
+        {activePage === 'game' && (
+          <>
+            {/* Main Game Section with Columns */}
+            <div className="flex w-full items-stretch justify-center">
+              <RomanColumn side="left" />
+              
+              {/* Dark Marble Frame */}
+              <div className="dark-marble-frame relative w-full max-w-xl overflow-hidden rounded-sm border-4 border-[#8B7355] shadow-2xl">
+                {/* Inner cream/white content area */}
+                <div className="relative bg-[#F5F0E8] px-6 py-8 sm:px-10 sm:py-10">
               
               {/* Current Emperor */}
               <div className="mb-6 flex flex-col items-center">
@@ -348,14 +625,14 @@ function App() {
 
               {/* Play Buttons */}
               <div className="space-y-3">
-                {/* Single Play Button */}
+                {/* Single Play Button - shows Connect Wallet when not connected */}
                 <button
-                  onClick={() => play(false)}
-                  disabled={!canPlay || isBusy || !hasEnoughForSingle}
+                  onClick={() => walletAddress ? play(false) : connect()}
+                  disabled={walletAddress ? (!canPlay || isBusy || !hasEnoughForSingle) : false}
                   className="mx-auto block w-full max-w-xs rounded-sm border-2 border-[#8B7355] bg-transparent px-8 py-3 font-roman text-sm font-semibold uppercase tracking-[0.2em] text-[#1C1C1C] transition-all duration-200 hover:bg-[#8B7355]/10 focus:outline-none focus:ring-2 focus:ring-[#8B7355]/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
                 >
                   {!walletAddress
-                    ? 'Connect to Enter'
+                    ? 'Connect Wallet to Play'
                     : !hasEnoughForSingle
                       ? 'Insufficient Tribute'
                       : playing
@@ -365,15 +642,15 @@ function App() {
                           : `Enter the Arena — ${attoToAlph(currentPlayCost, 2)}`}
                 </button>
 
-                {/* Double Play Button - always visible, disabled when no active round */}
+                {/* Double Play Button - shows Connect Wallet when not connected */}
                 <button
-                  onClick={() => play(true)}
-                  disabled={!canPlay || isBusy || !hasEnoughForDouble || !isRoundActive || isExpired}
+                  onClick={() => walletAddress ? play(true) : connect()}
+                  disabled={walletAddress ? (!canPlay || isBusy || !hasEnoughForDouble || !isRoundActive || isExpired) : false}
                   className="mx-auto flex w-full max-w-xs items-center justify-center gap-2 rounded-sm border-2 border-[#C9A227] bg-[#C9A227]/10 px-8 py-3 font-roman text-sm font-semibold uppercase tracking-[0.2em] text-[#1C1C1C] transition-all duration-200 hover:bg-[#C9A227]/20 focus:outline-none focus:ring-2 focus:ring-[#C9A227]/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
                 >
                   <Zap size={16} className="text-[#C9A227]" />
                   {!walletAddress
-                    ? 'Connect First'
+                    ? 'Connect Wallet'
                     : !isRoundActive
                       ? 'Start Round First'
                       : isExpired
@@ -391,13 +668,6 @@ function App() {
                   Double down halves the timer twice (÷4)
                 </p>
               </div>
-
-              {/* Connect Alephium text */}
-              {!walletAddress && (
-                <p className="mt-3 text-center text-xs uppercase tracking-wider text-[#1C1C1C]/50">
-                  Connect Alephium Wallet
-                </p>
-              )}
               
               {walletAddress && !hasEnoughForSingle && (
                 <p className="mt-3 text-center text-xs text-[#1C1C1C]/50">
@@ -405,37 +675,121 @@ function App() {
                 </p>
               )}
             </div>
-          </div>
-          
-          <RomanColumn side="right" />
-        </div>
+              </div>
+              
+              <RomanColumn side="right" />
+            </div>
 
-        {/* Prize & Savings Pots */}
-        <div className="mt-8 w-full max-w-xl">
-          {/* Gold divider */}
-          <div className="mb-6 h-px w-full bg-gradient-to-r from-transparent via-[#C9A227]/60 to-transparent" />
-          
-          <div className="grid grid-cols-2 gap-6">
-            <div className="rounded-sm border border-[#1C1C1C]/10 bg-white/60 p-4 text-center shadow-sm">
-              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[#1C1C1C]/50">
-                Prize Pot (80%)
-              </p>
-              <p className="font-roman text-xl font-semibold text-[#1C1C1C] sm:text-2xl">
-                {attoToAlph(prizePot, 2)}
-              </p>
-              <p className="text-xs text-[#1C1C1C]/50">ALPH</p>
+            {/* Prize & Savings Pots */}
+            <div className="mt-8 w-full max-w-xl">
+              <div className="mb-6 h-px w-full bg-gradient-to-r from-transparent via-[#C9A227]/60 to-transparent" />
+              <div className="grid grid-cols-2 gap-6">
+                <div className="rounded-sm border border-[#1C1C1C]/10 bg-white/60 p-4 text-center shadow-sm">
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[#1C1C1C]/50">Prize Pot (80%)</p>
+                  <p className="font-roman text-xl font-semibold text-[#1C1C1C] sm:text-2xl">{attoToAlph(prizePot, 2)}</p>
+                  <p className="text-xs text-[#1C1C1C]/50">ALPH</p>
+                </div>
+                <div className="rounded-sm border border-[#1C1C1C]/10 bg-white/60 p-4 text-center shadow-sm">
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[#1C1C1C]/50">Savings Pot (20%)</p>
+                  <p className="font-roman text-xl font-semibold text-[#1C1C1C] sm:text-2xl">{attoToAlph(totalSavings, 2)}</p>
+                  <p className="text-xs text-[#1C1C1C]/50">ALPH</p>
+                </div>
+              </div>
             </div>
-            <div className="rounded-sm border border-[#1C1C1C]/10 bg-white/60 p-4 text-center shadow-sm">
-              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[#1C1C1C]/50">
-                Savings Pot (20%)
+          </>
+        )}
+
+        {activePage === 'betting' && (
+          <div className="w-full max-w-2xl rounded-sm border-4 border-[#8B7355] bg-[#F5F0E8] px-6 py-8 shadow-2xl sm:px-10">
+            <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#1C1C1C]/70">On-chain Winner Betting</p>
+            <p className="mt-1 text-center text-[10px] italic text-[#1C1C1C]/50">
+              Round #{currentRoundId.toString()} • Fee {bettingState ? Number(bettingState.protocolFeeBps) / 100 : 2}%
+            </p>
+
+            {betStatus.length > 0 && (
+              <div className="mt-4 rounded border border-[#1C1C1C]/20 bg-white px-3 py-2 text-center text-xs text-[#1C1C1C]/80">
+                {betStatus}
+              </div>
+            )}
+
+            <div className="mt-4 space-y-2">
+              <label className="block text-xs font-medium text-[#1C1C1C]/70">Choose Player (from Played events)</label>
+              <select
+                value={betTarget}
+                onChange={(event) => setBetTarget(event.target.value)}
+                className="w-full rounded border border-[#1C1C1C]/25 bg-white px-3 py-2 font-mono text-xs text-[#1C1C1C] focus:border-[#8B7355] focus:outline-none"
+              >
+                {selectablePlayers.length === 0 && <option value="">No players yet</option>}
+                {selectablePlayers.map((player) => (
+                  <option key={player} value={player}>
+                    {formatAddress(player)}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                value={betAmountInput}
+                onChange={(event) => setBetAmountInput(event.target.value)}
+                placeholder="Bet amount (ALPH)"
+                className="w-full rounded border border-[#1C1C1C]/25 bg-white px-3 py-2 text-sm text-[#1C1C1C] focus:border-[#8B7355] focus:outline-none"
+              />
+            </div>
+
+            <div className="mt-3 text-center text-[10px] text-[#1C1C1C]/55">
+              Min bet: {attoToAlph(minBet, 2)} ALPH
+              {payoutQuote !== null && payoutQuote !== undefined && <span> • Est. payout: {attoToAlph(payoutQuote, 2)} ALPH</span>}
+            </div>
+
+            {hasMyBet && myBetTarget && (
+              <p className="mt-2 text-center text-[10px] text-[#1C1C1C]/60">
+                Your bet: {attoToAlph(myBetAmount, 2)} ALPH on {formatAddress(myBetTarget)}
               </p>
-              <p className="font-roman text-xl font-semibold text-[#1C1C1C] sm:text-2xl">
-                {attoToAlph(totalSavings, 2)}
-              </p>
-              <p className="text-xs text-[#1C1C1C]/50">ALPH</p>
+            )}
+
+            <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <button
+                onClick={placeBet}
+                disabled={!canPlaceBet || isBusy || selectablePlayers.length === 0}
+                className="rounded border border-[#8B7355] bg-[#8B7355]/10 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {placingBet ? 'Placing...' : 'Place Bet'}
+              </button>
+              <button
+                onClick={finalizeBettingRound}
+                disabled={!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || currentRoundId === 0n || isBusy}
+                className="rounded border border-[#1C1C1C]/30 bg-transparent px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {finalizingBetRound ? 'Finalizing...' : 'Finalize Betting'}
+              </button>
+              <button
+                onClick={claimBet}
+                disabled={!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || currentRoundId === 0n || isBusy}
+                className="rounded border border-[#C9A227] bg-[#C9A227]/15 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {claimingBet ? 'Claiming...' : 'Claim'}
+              </button>
+            </div>
+
+            <div className="mt-6">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C]/60">Eligible Players (latest first)</p>
+              <div className="max-h-44 overflow-auto rounded border border-[#1C1C1C]/15 bg-white/70 p-2">
+                {selectablePlayers.length === 0 ? (
+                  <p className="text-xs text-[#1C1C1C]/50">No Played events yet.</p>
+                ) : (
+                  selectablePlayers.map((player) => (
+                    <button
+                      key={player}
+                      onClick={() => setBetTarget(player)}
+                      className={`mb-1 block w-full rounded px-2 py-1 text-left font-mono text-xs ${betTarget === player ? 'bg-[#8B7355]/20 text-[#1C1C1C]' : 'bg-white text-[#1C1C1C]/70 hover:bg-[#8B7355]/10'}`}
+                    >
+                      {player}
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Footer */}
         <footer className="mt-auto pt-8 text-center text-[10px] text-[#1C1C1C]/30">

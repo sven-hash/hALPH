@@ -1,5 +1,5 @@
 {
-  "fullNodeVersion": "v4.4.0",
+  "fullNodeVersion": "v4.3.0",
   "compilerOptionsUsed": {
     "ignoreUnusedConstantsWarnings": false,
     "ignoreUnusedVariablesWarnings": false,
@@ -9,14 +9,20 @@
     "ignoreCheckExternalCallerWarnings": false,
     "ignoreUnusedFunctionReturnWarnings": false,
     "skipAbstractContractCheck": false,
-    "skipTests": true
+    "skipTests": false
   },
   "infos": {
+    "CountdownBettingMarket": {
+      "sourceFile": "countdown_betting_market.ral",
+      "sourceCodeHash": "4df9264dfae022b011f97f112bbb6bdf7fb7d352917dc39421760c2dccf7e7a5",
+      "bytecodeDebugPatch": "=5+2=1-6+d=2-2+01=2+92=2-3=1+d=2+68=1-1+611=12-2+c0=321-1+b=38+7a7e0214696e73657274206174206d617020706174683a2000=143-1+b=38+7a7e0214696e73657274206174206d617020706174683a2000=205-1+6=38+7a7e0214696e73657274206174206d617020706174683a2000=50+7a7e0214696e73657274206174206d617020706174683a2000=45-1+f=264+7a7e0214696e73657274206174206d617020706174683a2000=46+7a7e0214696e73657274206174206d617020706174683a2000=45-1+9=596+7a7e021472656d6f7665206174206d617020706174683a2000=44+7a7e021472656d6f7665206174206d617020706174683a2000=814",
+      "codeHashDebug": "922ce668f65e6a621e8cff862a152e5c44ab24bb056b3440a7b5335c8f121e88"
+    },
     "CountdownGame": {
       "sourceFile": "countdown_game.ral",
-      "sourceCodeHash": "bf6fed43d1b6dc680e07efcba4e98dec01a4c2cb5c1627cb76ba33e722ae0bbd",
+      "sourceCodeHash": "04a2a006900d50c5e4fb0c978bf70bfc93e6871b5523224fccb7a5513a3cc42c",
       "bytecodeDebugPatch": "",
-      "codeHashDebug": "e1ec20ad6f978cc8b3c4cd0272e403b96d69c40bcef20971c0d251b2fd8f9de1"
+      "codeHashDebug": "e068f1ee65e893c05a91910b0e24d7e0a596f719bd575c041c00f90a544d9f2e"
     },
     "IFungibleToken": {
       "sourceFile": "../node_modules/@alephium/web3/std/fungible_token_interface.ral",

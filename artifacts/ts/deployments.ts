@@ -7,13 +7,19 @@ import {
   DeployContractExecutionResult,
   NetworkId,
 } from "@alephium/web3";
-import { CountdownGame, CountdownGameInstance } from ".";
+import {
+  CountdownGame,
+  CountdownGameInstance,
+  CountdownBettingMarket,
+  CountdownBettingMarketInstance,
+} from ".";
 import { default as testnetDeployments } from "../../deployments/.deployments.testnet.json";
 
 export type Deployments = {
   deployerAddress: string;
   contracts: {
     CountdownGame?: DeployContractExecutionResult<CountdownGameInstance>;
+    CountdownBettingMarket?: DeployContractExecutionResult<CountdownBettingMarketInstance>;
   };
 };
 
@@ -26,6 +32,15 @@ function toDeployments(json: any): Deployments {
             ...json.contracts["CountdownGame"],
             contractInstance: CountdownGame.at(
               json.contracts["CountdownGame"].contractInstance.address
+            ),
+          },
+    CountdownBettingMarket:
+      json.contracts["CountdownBettingMarket"] === undefined
+        ? undefined
+        : {
+            ...json.contracts["CountdownBettingMarket"],
+            contractInstance: CountdownBettingMarket.at(
+              json.contracts["CountdownBettingMarket"].contractInstance.address
             ),
           },
   };

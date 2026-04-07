@@ -6,10 +6,14 @@ Contract CountdownGame(
     mut deadlineMs: U256,
     mut savingsPot: U256,
     mut roundActive: Bool,
-    mut currentPlayCost: U256
+    mut currentPlayCost: U256,
+    mut currentRoundId: U256,
+    mut lastSettledRoundId: U256,
+    mut lastSettledWinner: Address
 ) {
-    event Played(player: Address, roundPot: U256, deadlineMs: U256, durationMs: U256, playCost: U256)
+    event Played(roundId: U256, player: Address, roundPot: U256, deadlineMs: U256, durationMs: U256, playCost: U256)
     event RoundSettled(winner: Address, winnerPayout: U256, savingsAdded: U256)
+    event RoundStarted(roundId: U256, starter: Address, deadlineMs: U256)
 
     const INITIAL_DURATION_MS = 63891936000000
     const THIRTY_SECONDS_MS = 30000
@@ -17,19 +21,21 @@ Contract CountdownGame(
     enum ErrorCodes {
         InvalidDuration = 0
         RoundNotActive = 1
+        InvalidBasePlayCost = 2
     }
 
     @using(preapprovedAssets = true, assetsInContract = true, checkExternalCaller = false)
     pub fn play() -> () {
         let caller = callerAddress!()
         let now = blockTimeStamp!()
-
-        let playCost = if (roundActive) currentPlayCost else basePlayCost
-        transferTokenToSelf!(caller, ALPH, playCost)
+        assert!(basePlayCost > 0, ErrorCodes.InvalidBasePlayCost)
 
         if (roundActive && now >= deadlineMs) {
             settleExpiredRound()
         }
+
+        let playCost = currentPlayCost
+        transferTokenToSelf!(caller, ALPH, playCost)
 
         if (!roundActive) {
             startRound(caller, now)
@@ -55,6 +61,22 @@ Contract CountdownGame(
         continueRound(caller, now, playCost, true)
     }
 
+    @using(checkExternalCaller = false)
+    pub fn settleRound() -> () {
+        let now = blockTimeStamp!()
+        if (roundActive && now >= deadlineMs) {
+            settleExpiredRound()
+        }
+    }
+
+    pub fn getRoundSnapshot() -> (Bool, U256, U256, Address) {
+        return roundActive, currentRoundId, deadlineMs, currentLeader
+    }
+
+    pub fn getLastSettledRound() -> (U256, Address) {
+        return lastSettledRoundId, lastSettledWinner
+    }
+
     @using(updateFields = true)
     fn continueRound(caller: Address, now: U256, playCost: U256, isDouble: Bool) -> () {
         currentPot = currentPot + playCost
@@ -71,7 +93,7 @@ Contract CountdownGame(
         deadlineMs = now + newDuration
         currentPlayCost = currentPlayCost * 101 / 100
 
-        emit Played(caller, currentPot, deadlineMs, currentDurationMs, playCost)
+        emit Played(currentRoundId, caller, currentPot, deadlineMs, currentDurationMs, playCost)
     }
 
     @using(assetsInContract = true, updateFields = true)
@@ -85,23 +107,26 @@ Contract CountdownGame(
 
         savingsPot = savingsPot + savingsSlice
         roundActive = false
+        lastSettledRoundId = currentRoundId
+        lastSettledWinner = currentLeader
         currentPot = 0
         currentDurationMs = 0
         deadlineMs = 0
-        currentPlayCost = basePlayCost
+        currentPlayCost = currentPlayCost * 101 / 100
 
         emit RoundSettled(currentLeader, winnerPayout, savingsSlice)
     }
 
     @using(updateFields = true)
     fn startRound(caller: Address, now: U256) -> () {
-        currentPot = basePlayCost
+        currentRoundId = currentRoundId + 1
+        currentPot = currentPlayCost
         currentLeader = caller
         currentDurationMs = INITIAL_DURATION_MS
         deadlineMs = now + INITIAL_DURATION_MS
         roundActive = true
-        currentPlayCost = basePlayCost * 101 / 100
 
-        emit Played(caller, currentPot, deadlineMs, currentDurationMs, basePlayCost)
+        emit RoundStarted(currentRoundId, caller, deadlineMs)
+        emit Played(currentRoundId, caller, currentPot, deadlineMs, currentDurationMs, currentPlayCost)
     }
 }
