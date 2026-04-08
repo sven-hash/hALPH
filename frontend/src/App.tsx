@@ -443,60 +443,57 @@ function App() {
   })
 
   // Query for betting stats: total pool, per-player breakdown
+  // Scans BetPlaced events to find all unique targets for the current round
   const { data: bettingStats } = useQuery({
     queryKey: ['betting-stats', NODE_URL, BETTING_CONTRACT_ADDRESS, currentRoundId.toString()],
     queryFn: async () => {
       if (BETTING_CONTRACT_ADDRESS.length === 0 || currentRoundId === 0n) {
         return { totalPool: 0n, byPlayer: new Map<string, bigint>() }
       }
+      
       web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
       const provider = web3.getCurrentNodeProvider()
-      let start = 0
-      const byPlayer = new Map<string, bigint>()
+      const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
       
+      // First, scan BetPlaced events to find all unique targets for this round
+      const targetsInRound = new Set<string>()
+      let start = 0
       for (let i = 0; i < 200; i += 1) {
         const page = await provider.events.getEventsContractContractaddress(BETTING_CONTRACT_ADDRESS, { start })
         for (const event of page.events) {
           if (event.eventIndex === CountdownBettingMarket.eventIndex.BetPlaced) {
             const roundId = event.fields[0]?.value
             const target = event.fields[2]?.value
-            const amount = event.fields[3]?.value
-            if (typeof roundId !== 'string' || typeof target !== 'string' || typeof amount !== 'string') continue
+            if (typeof roundId !== 'string' || typeof target !== 'string') continue
             if (BigInt(roundId) !== currentRoundId) continue
-            const cleanTarget = stripAddressGroup(target)
-            const current = byPlayer.get(cleanTarget) ?? 0n
-            byPlayer.set(cleanTarget, current + BigInt(amount))
+            targetsInRound.add(stripAddressGroup(target))
           }
         }
         if (page.nextStart === start) break
         start = page.nextStart
       }
       
-      // Note: BetPlaced events track cumulative amounts (each event is the NEW total for that user on that target)
-      // To get accurate totals, we need to use getRoundPools from contract for the total
-      const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
-      let totalPool = 0n
+      if (targetsInRound.size === 0) {
+        return { totalPool: 0n, byPlayer: new Map<string, bigint>() }
+      }
       
-      // Get total pool - use a dummy address just to get the round total
-      if (byPlayer.size > 0) {
-        const firstPlayer = byPlayer.keys().next().value
-        if (firstPlayer) {
-          const pools = await market.view.getRoundPools({ args: { roundId: currentRoundId, target: firstPlayer } })
+      // Now query the contract for accurate pool amounts for each target
+      let totalPool = 0n
+      const byPlayer = new Map<string, bigint>()
+      
+      for (const target of targetsInRound) {
+        const pools = await market.view.getRoundPools({ args: { roundId: currentRoundId, target } })
+        // First call gets us the total pool
+        if (totalPool === 0n) {
           totalPool = pools.returns[0]
         }
-      }
-      
-      // Get accurate per-player pools from contract
-      const accurateByPlayer = new Map<string, bigint>()
-      for (const player of byPlayer.keys()) {
-        const pools = await market.view.getRoundPools({ args: { roundId: currentRoundId, target: player } })
-        const playerPool = pools.returns[1]
-        if (playerPool > 0n) {
-          accurateByPlayer.set(player, playerPool)
+        const targetPool = pools.returns[1]
+        if (targetPool > 0n) {
+          byPlayer.set(target, targetPool)
         }
       }
       
-      return { totalPool, byPlayer: accurateByPlayer }
+      return { totalPool, byPlayer }
     },
     enabled: BETTING_CONTRACT_ADDRESS.length > 0 && currentRoundId > 0n,
     refetchInterval: 8000,
@@ -971,7 +968,7 @@ function App() {
           <div className="w-full max-w-2xl rounded-sm border-4 border-[#8B7355] bg-[#F5F0E8] px-6 py-8 shadow-2xl sm:px-10">
             <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#1C1C1C]/70">On-chain Winner Betting</p>
             <p className="mt-1 text-center text-[10px] italic text-[#1C1C1C]/50">
-              Round #{currentRoundId.toString()} • Fee {bettingState ? Number(bettingState.protocolFeeBps) / 100 : 2}%
+              Round #{currentRoundId.toString()} • No fees
             </p>
 
             {/* Betting Stats */}

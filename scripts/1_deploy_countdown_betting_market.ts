@@ -10,7 +10,7 @@ const deployCountdownBettingMarket: DeployFunction<Settings> = async (
   const result = await deployer.deployContract(CountdownBettingMarket, {
     initialFields: {
       game: game.contractInstance.contractId,
-      protocolFeeBps: 200n,
+      protocolFeeBps: 0n,
       feePot: 0n
     }
   })

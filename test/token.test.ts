@@ -12,7 +12,9 @@ describe('CountdownGame', () => {
 
   beforeAll(() => {
     web3.setCurrentNodeProvider('http://127.0.0.1:22973', undefined, fetch)
+  })
 
+  beforeEach(() => {
     const testContractId = randomContractId()
     testContractAddress = addressFromContractId(testContractId)
     baseParams = {
@@ -38,7 +40,7 @@ describe('CountdownGame', () => {
 
   it('starts a new round with expected initial values', async () => {
     const result = await CountdownGame.tests.play(baseParams)
-    const state = result.contracts[0] as CountdownGameTypes.State
+    const state = result.contracts.find((contract) => contract.address === testContractAddress) as CountdownGameTypes.State
 
     expect(state.fields.roundActive).toEqual(true)
     expect(state.fields.currentLeader).toEqual(testAddress)
@@ -65,7 +67,7 @@ describe('CountdownGame', () => {
       }
     })
 
-    const state = result.contracts[0] as CountdownGameTypes.State
+    const state = result.contracts.find((contract) => contract.address === testContractAddress) as CountdownGameTypes.State
     expect(state.fields.currentLeader).toEqual(testAddress)
     expect(state.fields.currentPot).toEqual(6n * PLAY_COST)
     expect(state.fields.currentDurationMs).toEqual(8n / 2n + THIRTY_SECONDS_MS)
@@ -77,6 +79,7 @@ describe('CountdownGame', () => {
 
     const result = await CountdownGame.tests.play({
       ...baseParams,
+      blockTimeStamp: 2,
       initialFields: {
         ...baseParams.initialFields,
         currentLeader: previousLeader,
@@ -90,15 +93,16 @@ describe('CountdownGame', () => {
       }
     })
 
-    const state = result.contracts[0] as CountdownGameTypes.State
+    const state = result.contracts.find((contract) => contract.address === testContractAddress) as CountdownGameTypes.State
     const nextPlayCost = (PLAY_COST * 101n) / 100n
+    const savingsFromSettledRound = 2n * PLAY_COST
     expect(state.fields.currentLeader).toEqual(testAddress)
-    expect(state.fields.currentPot).toEqual(nextPlayCost)
+    expect(state.fields.currentPot).toEqual(nextPlayCost + savingsFromSettledRound)
     expect(state.fields.currentDurationMs).toEqual(INITIAL_DURATION_MS)
     expect(state.fields.currentRoundId).toEqual(8n)
     expect(state.fields.lastSettledRoundId).toEqual(7n)
     expect(state.fields.lastSettledWinner).toEqual(previousLeader)
-    expect(state.fields.savingsPot).toEqual(2n * PLAY_COST)
+    expect(state.fields.savingsPot).toEqual(0n)
     expect(state.fields.currentPlayCost).toEqual(nextPlayCost)
     expect(state.fields.roundActive).toEqual(true)
   })

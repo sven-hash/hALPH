@@ -14,7 +14,6 @@ Contract CountdownBettingMarket(
     event RoundFinalized(roundId: U256, winner: Address, totalPool: U256, feeAmount: U256)
     event Claimed(roundId: U256, bettor: Address, target: Address, payout: U256)
 
-    const BPS_DENOMINATOR = 10000
     const MIN_BET = 1e17
     const THIRTY_MINUTES_MS = 1800000
 
@@ -33,7 +32,7 @@ Contract CountdownBettingMarket(
 
     @using(preapprovedAssets = true, assetsInContract = true, checkExternalCaller = false)
     pub fn placeBet(roundId: U256, target: Address, amount: U256) -> () {
-        assert!(protocolFeeBps < BPS_DENOMINATOR, ErrorCodes.InvalidFeeBps)
+        assert!(protocolFeeBps == 0, ErrorCodes.InvalidFeeBps)
 
         let (roundActive, currentRoundId, deadlineMs, _) = game.getRoundSnapshot()
         let now = blockTimeStamp!()
@@ -122,7 +121,7 @@ Contract CountdownBettingMarket(
         assert!(settled, ErrorCodes.RoundNotSettled)
 
         let totalPool = if (totalPoolByRound.contains!(roundKey)) totalPoolByRound[roundKey] else 0
-        let feeAmount = totalPool * protocolFeeBps / BPS_DENOMINATOR
+        let feeAmount = 0
         feePot = feePot + feeAmount
 
         finalizedByRound.insert!(callerAddress!(), roundKey, true)
@@ -151,9 +150,7 @@ Contract CountdownBettingMarket(
             if (winnerPool == 0) {
                 0
             } else {
-                let feeAmount = totalPool * protocolFeeBps / BPS_DENOMINATOR
-                let netPool = totalPool - feeAmount
-                betAmount * netPool / winnerPool
+                betAmount * totalPool / winnerPool
             }
         } else {
             0
@@ -196,9 +193,7 @@ Contract CountdownBettingMarket(
         if (nextTargetPool == 0) {
             return 0
         } else {
-            let feeAmount = nextRoundPool * protocolFeeBps / BPS_DENOMINATOR
-            let netPool = nextRoundPool - feeAmount
-            return amount * netPool / nextTargetPool
+            return amount * nextRoundPool / nextTargetPool
         }
     }
 

@@ -39,7 +39,7 @@ describe('CountdownBettingMarket', () => {
       contractAddress: marketAddress,
       initialFields: {
         game: gameId,
-        protocolFeeBps: 200n,
+        protocolFeeBps: 0n,
         feePot: 0n
       },
       initialAsset: { alphAmount: 50n * ALPH },
@@ -105,7 +105,7 @@ describe('CountdownBettingMarket', () => {
     expect(finalizedEvent?.fields.roundId).toEqual(1n)
     const finalizedMarketState = finalized.contracts.find((state) => state.address === marketAddress)
     expect(finalizedMarketState).toBeDefined()
-    expect((finalizedMarketState as CountdownBettingMarketTypes.State).fields.feePot).toEqual((BET_AMOUNT * 200n) / 10000n)
+    expect((finalizedMarketState as CountdownBettingMarketTypes.State).fields.feePot).toEqual(0n)
 
     const claimed = await CountdownBettingMarket.tests.claim({
       ...baseParams,
@@ -117,7 +117,7 @@ describe('CountdownBettingMarket', () => {
 
     const claimedEvent = claimed.events.find((event) => event.name === 'Claimed')
     expect(claimedEvent).toBeDefined()
-    expect(claimedEvent?.fields.payout).toEqual((BET_AMOUNT * 9800n) / 10000n)
+    expect(claimedEvent?.fields.payout).toEqual(BET_AMOUNT)
   })
 
   it('rejects finalize when game round is not settled yet', async () => {
