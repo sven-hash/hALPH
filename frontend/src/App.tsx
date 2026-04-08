@@ -39,11 +39,33 @@ const CONTRACT_ADDRESS = import.meta.env.VITE_COUNTDOWN_CONTRACT_ADDRESS?.trim()
 const BETTING_CONTRACT_ADDRESS =
   import.meta.env.VITE_BETTING_CONTRACT_ADDRESS?.trim() || getBettingContractAddressFromDeployments() || ''
 const NODE_URL = (import.meta.env.VITE_NODE_URL ?? DEFAULT_NODE_URL).trim() || DEFAULT_NODE_URL
+const NETWORK = import.meta.env.VITE_ALEPHIUM_NETWORK?.trim() || 'testnet'
+const EXPLORER_URL = NETWORK === 'mainnet' ? 'https://explorer.alephium.org' : 'https://testnet.alephium.org'
 const fetcher: typeof fetch = (input, init) => window.fetch(input, init)
 
 function formatAddress(address: string): string {
-  if (address.length <= 12) return address
-  return `${address.slice(0, 6)}...${address.slice(-4)}`
+  const cleaned = stripAddressGroup(address)
+  if (cleaned.length <= 12) return cleaned
+  return `${cleaned.slice(0, 6)}...${cleaned.slice(-4)}`
+}
+
+function formatAddressWithYou(address: string, connectedAddress?: string): string {
+  const cleaned = stripAddressGroup(address)
+  const connectedCleaned = connectedAddress ? stripAddressGroup(connectedAddress) : ''
+  const formatted = formatAddress(address)
+  if (connectedCleaned && cleaned === connectedCleaned) {
+    return `${formatted} (You)`
+  }
+  return formatted
+}
+
+function stripAddressGroup(address: string): string {
+  // Alephium addresses may have a group suffix like ":0", ":1", etc. - remove it
+  const colonIndex = address.indexOf(':')
+  if (colonIndex !== -1) {
+    return address.slice(0, colonIndex)
+  }
+  return address
 }
 
 function attoToAlph(atto: bigint, decimals: number = 4): string {
@@ -161,7 +183,7 @@ function RomanColumn({ side }: { side: 'left' | 'right' }) {
 }
 
 function App() {
-  const [activePage, setActivePage] = useState<'game' | 'betting'>('game')
+  const [activePage, setActivePage] = useState<'game' | 'betting' | 'instructions'>('game')
   const [status, setStatus] = useState<string>('')
   const [betStatus, setBetStatus] = useState<string>('')
   const [playing, setPlaying] = useState(false)
@@ -170,6 +192,7 @@ function App() {
   const [finalizingBetRound, setFinalizingBetRound] = useState(false)
   const [claimingBet, setClaimingBet] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [pendingTxId, setPendingTxId] = useState<string | null>(null)
   const [betTarget, setBetTarget] = useState('')
   const [betAmountInput, setBetAmountInput] = useState('1')
   const [nowMs, setNowMs] = useState<bigint>(BigInt(Date.now()))
@@ -245,40 +268,42 @@ function App() {
     betAmount >= minBet &&
     availableAlph >= betAmount
 
+  const cleanedWalletAddress = walletAddress ? stripAddressGroup(walletAddress) : undefined
+
   const { data: myBet } = useQuery({
-    queryKey: ['my-bet', NODE_URL, BETTING_CONTRACT_ADDRESS, currentRoundId.toString(), walletAddress],
+    queryKey: ['my-bet', NODE_URL, BETTING_CONTRACT_ADDRESS, currentRoundId.toString(), cleanedWalletAddress],
     queryFn: async () => {
-      if (!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0) return null
+      if (!cleanedWalletAddress || BETTING_CONTRACT_ADDRESS.length === 0) return null
       web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
       const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
       const result = await market.view.getUserBet({
         args: {
           roundId: currentRoundId,
-          bettor: walletAddress
+          bettor: cleanedWalletAddress
         }
       })
       return result.returns
     },
-    enabled: Boolean(walletAddress) && BETTING_CONTRACT_ADDRESS.length > 0 && currentRoundId > 0n,
+    enabled: Boolean(cleanedWalletAddress) && BETTING_CONTRACT_ADDRESS.length > 0 && currentRoundId > 0n,
     refetchInterval: 4000,
     refetchIntervalInBackground: true
   })
 
   const { data: myLastSettledBet } = useQuery({
-    queryKey: ['my-last-settled-bet', NODE_URL, BETTING_CONTRACT_ADDRESS, lastSettledRoundId.toString(), walletAddress],
+    queryKey: ['my-last-settled-bet', NODE_URL, BETTING_CONTRACT_ADDRESS, lastSettledRoundId.toString(), cleanedWalletAddress],
     queryFn: async () => {
-      if (!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || lastSettledRoundId === 0n) return null
+      if (!cleanedWalletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || lastSettledRoundId === 0n) return null
       web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
       const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
       const result = await market.view.getUserBet({
         args: {
           roundId: lastSettledRoundId,
-          bettor: walletAddress
+          bettor: cleanedWalletAddress
         }
       })
       return result.returns
     },
-    enabled: Boolean(walletAddress) && BETTING_CONTRACT_ADDRESS.length > 0 && lastSettledRoundId > 0n,
+    enabled: Boolean(cleanedWalletAddress) && BETTING_CONTRACT_ADDRESS.length > 0 && lastSettledRoundId > 0n,
     refetchInterval: 4000,
     refetchIntervalInBackground: true
   })
@@ -324,7 +349,8 @@ function App() {
           const playerField = event.fields[1]
           if (typeof roundField?.value === 'string' && typeof playerField?.value === 'string') {
             if (BigInt(roundField.value) === currentRoundId) {
-              players.push(playerField.value)
+              // Strip any group suffix from the address
+              players.push(stripAddressGroup(playerField.value))
             }
           }
         }
@@ -343,6 +369,7 @@ function App() {
     queryKey: ['my-bet-history', NODE_URL, BETTING_CONTRACT_ADDRESS, walletAddress],
     queryFn: async () => {
       if (!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0) return []
+      const cleanedWalletAddress = stripAddressGroup(walletAddress)
       web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
       const provider = web3.getCurrentNodeProvider()
       let start = 0
@@ -357,10 +384,10 @@ function App() {
             const target = event.fields[2]?.value
             const amount = event.fields[3]?.value
             if (typeof roundId !== 'string' || typeof bettor !== 'string' || typeof target !== 'string' || typeof amount !== 'string') continue
-            if (bettor !== walletAddress) continue
+            if (stripAddressGroup(bettor) !== cleanedWalletAddress) continue
             byRound.set(roundId, {
               roundId: BigInt(roundId),
-              target,
+              target: stripAddressGroup(target),
               amount: BigInt(amount),
               finalized: byRound.get(roundId)?.finalized ?? false,
               winner: byRound.get(roundId)?.winner,
@@ -371,11 +398,11 @@ function App() {
             const roundId = event.fields[0]?.value
             const winner = event.fields[1]?.value
             if (typeof roundId !== 'string' || typeof winner !== 'string') continue
-            finalizedByRound.set(roundId, { winner })
+            finalizedByRound.set(roundId, { winner: stripAddressGroup(winner) })
             const existing = byRound.get(roundId)
             if (existing) {
               existing.finalized = true
-              existing.winner = winner
+              existing.winner = stripAddressGroup(winner)
               byRound.set(roundId, existing)
             }
           } else if (event.eventIndex === CountdownBettingMarket.eventIndex.Claimed) {
@@ -383,7 +410,7 @@ function App() {
             const bettor = event.fields[1]?.value
             const payout = event.fields[3]?.value
             if (typeof roundId !== 'string' || typeof bettor !== 'string' || typeof payout !== 'string') continue
-            if (bettor !== walletAddress) continue
+            if (stripAddressGroup(bettor) !== cleanedWalletAddress) continue
             const existing = byRound.get(roundId)
             if (existing) {
               existing.claimed = true
@@ -414,6 +441,84 @@ function App() {
     refetchInterval: 8000,
     refetchIntervalInBackground: true
   })
+
+  // Query for betting stats: total pool, per-player breakdown
+  const { data: bettingStats } = useQuery({
+    queryKey: ['betting-stats', NODE_URL, BETTING_CONTRACT_ADDRESS, currentRoundId.toString()],
+    queryFn: async () => {
+      if (BETTING_CONTRACT_ADDRESS.length === 0 || currentRoundId === 0n) {
+        return { totalPool: 0n, byPlayer: new Map<string, bigint>() }
+      }
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const provider = web3.getCurrentNodeProvider()
+      let start = 0
+      const byPlayer = new Map<string, bigint>()
+      
+      for (let i = 0; i < 200; i += 1) {
+        const page = await provider.events.getEventsContractContractaddress(BETTING_CONTRACT_ADDRESS, { start })
+        for (const event of page.events) {
+          if (event.eventIndex === CountdownBettingMarket.eventIndex.BetPlaced) {
+            const roundId = event.fields[0]?.value
+            const target = event.fields[2]?.value
+            const amount = event.fields[3]?.value
+            if (typeof roundId !== 'string' || typeof target !== 'string' || typeof amount !== 'string') continue
+            if (BigInt(roundId) !== currentRoundId) continue
+            const cleanTarget = stripAddressGroup(target)
+            const current = byPlayer.get(cleanTarget) ?? 0n
+            byPlayer.set(cleanTarget, current + BigInt(amount))
+          }
+        }
+        if (page.nextStart === start) break
+        start = page.nextStart
+      }
+      
+      // Note: BetPlaced events track cumulative amounts (each event is the NEW total for that user on that target)
+      // To get accurate totals, we need to use getRoundPools from contract for the total
+      const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
+      let totalPool = 0n
+      
+      // Get total pool - use a dummy address just to get the round total
+      if (byPlayer.size > 0) {
+        const firstPlayer = byPlayer.keys().next().value
+        if (firstPlayer) {
+          const pools = await market.view.getRoundPools({ args: { roundId: currentRoundId, target: firstPlayer } })
+          totalPool = pools.returns[0]
+        }
+      }
+      
+      // Get accurate per-player pools from contract
+      const accurateByPlayer = new Map<string, bigint>()
+      for (const player of byPlayer.keys()) {
+        const pools = await market.view.getRoundPools({ args: { roundId: currentRoundId, target: player } })
+        const playerPool = pools.returns[1]
+        if (playerPool > 0n) {
+          accurateByPlayer.set(player, playerPool)
+        }
+      }
+      
+      return { totalPool, byPlayer: accurateByPlayer }
+    },
+    enabled: BETTING_CONTRACT_ADDRESS.length > 0 && currentRoundId > 0n,
+    refetchInterval: 8000,
+    refetchIntervalInBackground: true
+  })
+
+  const totalBettingPool = bettingStats?.totalPool ?? 0n
+  const bettingByPlayer = bettingStats?.byPlayer ?? new Map<string, bigint>()
+  
+  // Find the player with most bets
+  const topBetPlayer = useMemo(() => {
+    if (bettingByPlayer.size === 0) return null
+    let maxPlayer = ''
+    let maxAmount = 0n
+    for (const [player, amount] of bettingByPlayer.entries()) {
+      if (amount > maxAmount) {
+        maxAmount = amount
+        maxPlayer = player
+      }
+    }
+    return maxPlayer ? { address: maxPlayer, amount: maxAmount } : null
+  }, [bettingByPlayer])
 
   const play = async (isDouble: boolean = false) => {
     if (wallet === undefined) {
@@ -473,6 +578,7 @@ function App() {
           })
       
       updateBalanceForTx(result.txId)
+      setPendingTxId(result.txId)
       setStatus('Transaction submitted. Awaiting confirmation...')
       setConfirming(true)
       await waitForTxConfirmation(result.txId, 1, 1000)
@@ -484,6 +590,7 @@ function App() {
       setConfirming(false)
       setPlaying(false)
       setPlayingDouble(false)
+      setPendingTxId(null)
     }
   }
 
@@ -536,6 +643,7 @@ function App() {
         attoAlphAmount: betAmount + 5n * 10n ** 17n
       })
       updateBalanceForTx(result.txId)
+      setPendingTxId(result.txId)
       setBetStatus('Bet submitted. Awaiting confirmation...')
       await waitForTxConfirmation(result.txId, 1, 1000)
       setBetStatus('Bet confirmed on-chain.')
@@ -545,6 +653,7 @@ function App() {
     } finally {
       setPlacingBet(false)
       setConfirming(false)
+      setPendingTxId(null)
     }
   }
 
@@ -569,6 +678,7 @@ function App() {
         attoAlphAmount: 3n * 10n ** 17n
       })
       updateBalanceForTx(result.txId)
+      setPendingTxId(result.txId)
       setBetStatus('Finalize submitted. Awaiting confirmation...')
       await waitForTxConfirmation(result.txId, 1, 1000)
       setBetStatus(`Round #${targetRoundId.toString()} finalized for betting.`)
@@ -578,6 +688,7 @@ function App() {
     } finally {
       setFinalizingBetRound(false)
       setConfirming(false)
+      setPendingTxId(null)
     }
   }
 
@@ -601,6 +712,7 @@ function App() {
         args: { roundId: targetRoundId }
       })
       updateBalanceForTx(result.txId)
+      setPendingTxId(result.txId)
       setBetStatus('Claim submitted. Awaiting confirmation...')
       await waitForTxConfirmation(result.txId, 1, 1000)
       setBetStatus(`Claim settled for round #${targetRoundId.toString()}.`)
@@ -610,6 +722,7 @@ function App() {
     } finally {
       setClaimingBet(false)
       setConfirming(false)
+      setPendingTxId(null)
     }
   }
 
@@ -635,7 +748,8 @@ function App() {
   const isBusy = playing || playingDouble || placingBet || finalizingBetRound || claimingBet || confirming
   const selectablePlayers = useMemo(() => {
     if (!state?.currentLeader) return playedPlayers
-    return playedPlayers.includes(state.currentLeader) ? playedPlayers : [state.currentLeader, ...playedPlayers]
+    const leader = stripAddressGroup(state.currentLeader)
+    return playedPlayers.includes(leader) ? playedPlayers : [leader, ...playedPlayers]
   }, [playedPlayers, state?.currentLeader])
 
   useEffect(() => {
@@ -675,6 +789,12 @@ function App() {
             >
               Betting
             </button>
+            <button
+              onClick={() => setActivePage('instructions')}
+              className={`rounded border px-4 py-1 text-xs font-semibold uppercase tracking-wider ${activePage === 'instructions' ? 'border-[#8B7355] bg-[#8B7355]/15 text-[#1C1C1C]' : 'border-[#1C1C1C]/25 bg-white/50 text-[#1C1C1C]/70'}`}
+            >
+              How to Play
+            </button>
           </div>
         </div>
 
@@ -696,7 +816,7 @@ function App() {
                   <Crown size={16} strokeWidth={1.5} className="text-[#C9A227]" />
                 </div>
                 <p className="font-mono text-sm text-[#1C1C1C]/80">
-                  {isLoading ? '...' : state ? formatAddress(state.currentLeader) : '—'}
+                  {isLoading ? '...' : state ? formatAddressWithYou(state.currentLeader, walletAddress) : '—'}
                 </p>
               </div>
 
@@ -760,7 +880,7 @@ function App() {
               {isExpired && (
                 <div className="mb-4 rounded border border-[#C9A227]/40 bg-[#C9A227]/10 px-4 py-3 text-center text-sm text-[#1C1C1C]">
                   <p>
-                    <span className="font-semibold">Time's Up!</span> {state ? formatAddress(state.currentLeader) : '—'} wins {attoToAlph(prizePot, 2)} ALPH.
+                    <span className="font-semibold">Time's Up!</span> {state ? formatAddressWithYou(state.currentLeader, walletAddress) : '—'} wins {attoToAlph(prizePot, 2)} ALPH.
                   </p>
                   <p className="mt-1 text-[10px] italic text-[#1C1C1C]/50">
                     Click below to pay the winner and start a new round
@@ -853,9 +973,59 @@ function App() {
             <p className="mt-1 text-center text-[10px] italic text-[#1C1C1C]/50">
               Round #{currentRoundId.toString()} • Fee {bettingState ? Number(bettingState.protocolFeeBps) / 100 : 2}%
             </p>
-            <p className="mt-1 text-center text-[10px] italic text-[#1C1C1C]/50">
-              Last settled round: #{lastSettledRoundId.toString()}
-            </p>
+
+            {/* Betting Stats */}
+            <div className="mt-4 grid grid-cols-2 gap-4 rounded border border-[#C9A227]/30 bg-[#C9A227]/5 p-4">
+              <div className="text-center">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C]/60">Total Betting Pool</p>
+                <p className="font-roman text-xl font-bold text-[#C9A227]">{attoToAlph(totalBettingPool, 2)} <span className="text-sm font-normal">ALPH</span></p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C]/60">Favorite</p>
+                {topBetPlayer ? (
+                  <>
+                    <p className="font-mono text-xs text-[#1C1C1C]/80">{formatAddressWithYou(topBetPlayer.address, walletAddress)}</p>
+                    <p className="text-[10px] text-[#C9A227]">{attoToAlph(topBetPlayer.amount, 2)} ALPH ({totalBettingPool > 0n ? Math.round(Number(topBetPlayer.amount * 100n / totalBettingPool)) : 0}%)</p>
+                  </>
+                ) : (
+                  <p className="text-xs text-[#1C1C1C]/50">No bets yet</p>
+                )}
+              </div>
+            </div>
+
+            {/* Per-player betting breakdown */}
+            {bettingByPlayer.size > 0 && (
+              <div className="mt-3">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C]/50">Betting Breakdown</p>
+                <div className="space-y-1">
+                  {[...bettingByPlayer.entries()]
+                    .sort((a, b) => Number(b[1] - a[1]))
+                    .slice(0, 5)
+                    .map(([player, amount]) => {
+                      const percentage = totalBettingPool > 0n ? Number(amount * 100n / totalBettingPool) : 0
+                      return (
+                        <div key={player} className="flex items-center gap-2">
+                          <div className="h-2 flex-1 rounded-full bg-[#1C1C1C]/10 overflow-hidden">
+                            <div 
+                              className="h-full bg-[#C9A227]" 
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                          <span className="min-w-[80px] text-right font-mono text-[10px] text-[#1C1C1C]/70">
+                            {formatAddressWithYou(player, walletAddress)}
+                          </span>
+                          <span className="min-w-[60px] text-right text-[10px] text-[#1C1C1C]/60">
+                            {attoToAlph(amount, 2)}
+                          </span>
+                          <span className="min-w-[30px] text-right text-[10px] text-[#C9A227]">
+                            {percentage}%
+                          </span>
+                        </div>
+                      )
+                    })}
+                </div>
+              </div>
+            )}
 
             {betStatus.length > 0 && (
               <div className="mt-4 rounded border border-[#1C1C1C]/20 bg-white px-3 py-2 text-center text-xs text-[#1C1C1C]/80">
@@ -864,18 +1034,24 @@ function App() {
             )}
 
             <div className="mt-4 space-y-2">
-              <label className="block text-xs font-medium text-[#1C1C1C]/70">Choose Player (from Played events)</label>
+              <label className="block text-xs font-medium text-[#1C1C1C]/70">Choose Player</label>
               <select
                 value={betTarget}
                 onChange={(event) => setBetTarget(event.target.value)}
                 className="w-full rounded border border-[#1C1C1C]/25 bg-white px-3 py-2 font-mono text-xs text-[#1C1C1C] focus:border-[#8B7355] focus:outline-none"
               >
                 {selectablePlayers.length === 0 && <option value="">No players yet</option>}
-                {selectablePlayers.map((player) => (
-                  <option key={player} value={player}>
-                    {formatAddress(player)}
-                  </option>
-                ))}
+                {selectablePlayers.map((player) => {
+                  const playerBets = bettingByPlayer.get(player) ?? 0n
+                  const label = playerBets > 0n 
+                    ? `${formatAddressWithYou(player, walletAddress)} (${attoToAlph(playerBets, 1)} ALPH)`
+                    : formatAddressWithYou(player, walletAddress)
+                  return (
+                    <option key={player} value={player}>
+                      {label}
+                    </option>
+                  )
+                })}
               </select>
 
               <input
@@ -888,17 +1064,21 @@ function App() {
 
             <div className="mt-3 text-center text-[10px] text-[#1C1C1C]/55">
               Min bet: {attoToAlph(minBet, 2)} ALPH
-              {payoutQuote !== null && payoutQuote !== undefined && <span> • Est. payout: {attoToAlph(payoutQuote, 2)} ALPH</span>}
+              {payoutQuote !== null && payoutQuote !== undefined && (
+                <span className="ml-2 rounded bg-[#C9A227]/15 px-2 py-0.5 font-semibold text-[#C9A227]">
+                  Est. payout: {attoToAlph(payoutQuote, 2)} ALPH
+                </span>
+              )}
             </div>
 
             {hasMyBet && myBetTarget && (
               <p className="mt-2 text-center text-[10px] text-[#1C1C1C]/60">
-                Your bet: {attoToAlph(myBetAmount, 2)} ALPH on {formatAddress(myBetTarget)}
+                Your bet: {attoToAlph(myBetAmount, 2)} ALPH on {formatAddressWithYou(myBetTarget, walletAddress)}
               </p>
             )}
             {hasMyLastSettledBet && myLastSettledBetTarget && (
               <p className="mt-1 text-center text-[10px] text-[#1C1C1C]/60">
-                Last settled bet: {attoToAlph(myLastSettledBetAmount, 2)} ALPH on {formatAddress(myLastSettledBetTarget)}
+                Last settled bet: {attoToAlph(myLastSettledBetAmount, 2)} ALPH on {formatAddressWithYou(myLastSettledBetTarget, walletAddress)}
               </p>
             )}
 
@@ -935,10 +1115,10 @@ function App() {
                   myBetHistory.map((item) => (
                     <div key={item.roundId.toString()} className="mb-2 rounded border border-[#1C1C1C]/10 bg-white p-2">
                       <p className="text-[11px] text-[#1C1C1C]/80">
-                        Round #{item.roundId.toString()} • {attoToAlph(item.amount, 2)} ALPH on {formatAddress(item.target)}
+                        Round #{item.roundId.toString()} • {attoToAlph(item.amount, 2)} ALPH on {formatAddressWithYou(item.target, walletAddress)}
                       </p>
                       <p className="text-[10px] text-[#1C1C1C]/55">
-                        {item.finalized ? `Finalized${item.winner ? ` • Winner ${formatAddress(item.winner)}` : ''}` : 'Not finalized yet'}
+                        {item.finalized ? `Finalized${item.winner ? ` • Winner ${formatAddressWithYou(item.winner, walletAddress)}` : ''}` : 'Not finalized yet'}
                         {item.claimed ? ` • Claimed ${attoToAlph(item.payout, 2)} ALPH` : ''}
                       </p>
                       <div className="mt-1 flex gap-2">
@@ -975,11 +1155,95 @@ function App() {
                       onClick={() => setBetTarget(player)}
                       className={`mb-1 block w-full rounded px-2 py-1 text-left font-mono text-xs ${betTarget === player ? 'bg-[#8B7355]/20 text-[#1C1C1C]' : 'bg-white text-[#1C1C1C]/70 hover:bg-[#8B7355]/10'}`}
                     >
-                      {player}
+                      {formatAddressWithYou(player, walletAddress)}
                     </button>
                   ))
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {activePage === 'instructions' && (
+          <div className="w-full max-w-2xl rounded-sm border-4 border-[#8B7355] bg-[#F5F0E8] px-6 py-8 shadow-2xl sm:px-10">
+            <h2 className="font-roman text-2xl font-semibold text-[#1C1C1C] mb-6 text-center">How to Play</h2>
+            
+            <div className="space-y-6 text-sm text-[#1C1C1C]/80">
+              <section>
+                <h3 className="font-roman text-lg font-semibold text-[#C9A227] mb-2">The Game</h3>
+                <p className="mb-2">
+                  The hALPHing is a timer-halving survival game on Alephium blockchain. A countdown timer starts at ~2026 years. 
+                  Each time someone plays, the timer is <strong>halved</strong> and that player becomes the current leader.
+                </p>
+                <p>
+                  When the timer runs out, the last leader <strong>wins 80%</strong> of the pot. The remaining 20% seeds the next round.
+                </p>
+              </section>
+
+              <section>
+                <h3 className="font-roman text-lg font-semibold text-[#C9A227] mb-2">How to Enter</h3>
+                <ul className="list-disc list-inside space-y-1">
+                  <li><strong>Enter the Arena</strong> — Pay the entry fee to halve the timer (÷2) and become leader</li>
+                  <li><strong>Double Down</strong> — Pay 2x the entry fee to quarter the timer (÷4) and become leader</li>
+                </ul>
+                <p className="mt-2 text-xs text-[#1C1C1C]/60">
+                  The entry fee starts at 5 ALPH and increases by 1% after each round settles.
+                </p>
+              </section>
+
+              <section>
+                <h3 className="font-roman text-lg font-semibold text-[#C9A227] mb-2">Betting</h3>
+                <p>
+                  You can also bet on who you think will win the current round. Place bets on any player who has entered the arena.
+                  If your chosen player wins, you receive a proportional share of the betting pool based on your stake.
+                </p>
+              </section>
+
+              <section>
+                <h3 className="font-roman text-lg font-semibold text-[#C9A227] mb-2">Getting ALPH</h3>
+                <p className="mb-2">To play, you need ALPH (Alephium's native token). Here's how to get some:</p>
+                <ol className="list-decimal list-inside space-y-2">
+                  <li>
+                    <strong>Install a Wallet</strong> — Download the{' '}
+                    <a href="https://alephium.org/#wallets" target="_blank" rel="noopener noreferrer" className="text-[#C9A227] underline hover:text-[#8B7355]">
+                      Alephium Extension Wallet
+                    </a>{' '}
+                    for your browser
+                  </li>
+                  <li>
+                    <strong>Buy ALPH</strong> — Purchase on exchanges like{' '}
+                    <a href="https://www.gate.io/" target="_blank" rel="noopener noreferrer" className="text-[#C9A227] underline hover:text-[#8B7355]">Gate.io</a>,{' '}
+                    <a href="https://www.mexc.com/" target="_blank" rel="noopener noreferrer" className="text-[#C9A227] underline hover:text-[#8B7355]">MEXC</a>, or{' '}
+                    <a href="https://www.bitget.com/" target="_blank" rel="noopener noreferrer" className="text-[#C9A227] underline hover:text-[#8B7355]">Bitget</a>
+                  </li>
+                  <li>
+                    <strong>Withdraw to Wallet</strong> — Send ALPH to your wallet address
+                  </li>
+                  <li>
+                    <strong>Connect & Play</strong> — Click "Connect Wallet" and enter the arena!
+                  </li>
+                </ol>
+              </section>
+
+              <section>
+                <h3 className="font-roman text-lg font-semibold text-[#C9A227] mb-2">Testnet Faucet</h3>
+                <p>
+                  Playing on testnet? Get free test ALPH from the{' '}
+                  <a href="https://faucet.testnet.alephium.org/" target="_blank" rel="noopener noreferrer" className="text-[#C9A227] underline hover:text-[#8B7355]">
+                    Alephium Testnet Faucet
+                  </a>
+                </p>
+              </section>
+
+              <section className="border-t border-[#1C1C1C]/10 pt-4">
+                <h3 className="font-roman text-lg font-semibold text-[#1C1C1C]/70 mb-2">Strategy Tips</h3>
+                <ul className="list-disc list-inside space-y-1 text-[#1C1C1C]/60">
+                  <li>The timer halves each play, so early plays are cheap but give lots of time for others</li>
+                  <li>As the timer gets shorter, it becomes more valuable to be the last player</li>
+                  <li>Double Down is riskier but quarters the timer, giving others less time to react</li>
+                  <li>Watch the pot size — bigger pots attract more competition</li>
+                </ul>
+              </section>
             </div>
           </div>
         )}
@@ -993,14 +1257,32 @@ function App() {
       {/* Loading Overlay */}
       {isBusy && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-[#FAF9F6]/90 backdrop-blur-sm">
-          <div className="rounded-sm border-2 border-[#8B7355] bg-white px-10 py-8 text-center shadow-2xl">
+          <div className="rounded-sm border-2 border-[#8B7355] bg-white px-10 py-8 text-center shadow-2xl max-w-sm">
             <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-3 border-[#C9A227] border-t-transparent" />
             <p className="font-roman text-lg font-medium text-[#1C1C1C]">
-              {(playing || playingDouble) ? (playingDouble ? 'Submitting double tribute...' : 'Submitting tribute...') : 'Awaiting confirmation...'}
+              {(playing || playingDouble) 
+                ? (playingDouble ? 'Submitting double tribute...' : 'Submitting tribute...') 
+                : placingBet
+                  ? 'Placing bet...'
+                  : finalizingBetRound
+                    ? 'Finalizing round...'
+                    : claimingBet
+                      ? 'Claiming winnings...'
+                      : 'Awaiting confirmation...'}
             </p>
             <p className="mt-1 text-sm text-[#1C1C1C]/50">
               Please wait
             </p>
+            {pendingTxId && (
+              <a
+                href={`${EXPLORER_URL}/transactions/${pendingTxId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-block rounded border border-[#C9A227] px-3 py-1.5 text-xs font-medium text-[#C9A227] transition hover:bg-[#C9A227]/10"
+              >
+                View Transaction ↗
+              </a>
+            )}
           </div>
         </div>
       )}
