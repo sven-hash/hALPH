@@ -192,6 +192,7 @@ function App() {
       const nextState = await game.fetchState()
       return nextState.fields
     },
+    enabled: CONTRACT_ADDRESS.length > 0,
     refetchInterval: 4000,
     refetchIntervalInBackground: true
   })
@@ -212,14 +213,18 @@ function App() {
     refetchIntervalInBackground: true
   })
 
-  const basePlayCost = state?.basePlayCost ?? 5n * 10n ** 18n
-  const currentPlayCost = state?.roundActive ? state.currentPlayCost : basePlayCost
+  const baseCurrentPlayCost = state?.currentPlayCost ?? 5n * 10n ** 18n
+  // If round is expired, price will increase by 1% when settled
+  const currentTimestamp = BigInt(Date.now())
+  const willSettleOnPlay = state?.roundActive && currentTimestamp >= (state?.deadlineMs ?? 0n)
+  const currentPlayCost = willSettleOnPlay ? baseCurrentPlayCost * 101n / 100n : baseCurrentPlayCost
   const doublePlayCost = currentPlayCost * 2n
   const canPlay = wallet !== undefined && CONTRACT_ADDRESS.length > 0
   const hasEnoughForSingle = availableAlph >= currentPlayCost
   const hasEnoughForDouble = availableAlph >= doublePlayCost
   const isRoundActive = state?.roundActive ?? false
   const currentRoundId = state?.currentRoundId ?? 0n
+  const lastSettledRoundId = state?.lastSettledRoundId ?? 0n
   const minBet = CountdownBettingMarket.consts.MIN_BET
   const betAmount = alphToAtto(betAmountInput)
   const canPlaceBet =
@@ -246,6 +251,25 @@ function App() {
       return result.returns
     },
     enabled: Boolean(walletAddress) && BETTING_CONTRACT_ADDRESS.length > 0 && currentRoundId > 0n,
+    refetchInterval: 4000,
+    refetchIntervalInBackground: true
+  })
+
+  const { data: myLastSettledBet } = useQuery({
+    queryKey: ['my-last-settled-bet', NODE_URL, BETTING_CONTRACT_ADDRESS, lastSettledRoundId.toString(), walletAddress],
+    queryFn: async () => {
+      if (!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || lastSettledRoundId === 0n) return null
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
+      const result = await market.view.getUserBet({
+        args: {
+          roundId: lastSettledRoundId,
+          bettor: walletAddress
+        }
+      })
+      return result.returns
+    },
+    enabled: Boolean(walletAddress) && BETTING_CONTRACT_ADDRESS.length > 0 && lastSettledRoundId > 0n,
     refetchInterval: 4000,
     refetchIntervalInBackground: true
   })
@@ -311,12 +335,6 @@ function App() {
       setStatus('Connect your Alephium wallet to enter the arena.')
       return
     }
-    const cost = isDouble ? doublePlayCost : currentPlayCost
-    const hasEnough = isDouble ? hasEnoughForDouble : hasEnoughForSingle
-    if (!hasEnough) {
-      setStatus(`Insufficient tribute. You need at least ${attoToAlph(cost, 2)} ALPH.`)
-      return
-    }
     if (isDouble && !isRoundActive) {
       setStatus('Double play is only available during an active round.')
       return
@@ -339,14 +357,34 @@ function App() {
       const signer = wallet.signer
       if (signer === undefined) throw new Error('Connected wallet has no signer.')
 
+      // Fetch latest state to get accurate play cost
+      const latestState = await game.fetchState()
+      let latestPlayCost = latestState.fields.currentPlayCost
+      
+      // If round is expired, the contract will settle it first which increases price by 1%
+      const now = BigInt(Date.now())
+      const roundExpired = latestState.fields.roundActive && now >= latestState.fields.deadlineMs
+      if (roundExpired) {
+        latestPlayCost = latestPlayCost * 101n / 100n
+      }
+      
+      const cost = isDouble ? latestPlayCost * 2n : latestPlayCost
+      
+      if (availableAlph < cost) {
+        setStatus(`Insufficient ALPH. ${roundExpired ? 'After settlement, price' : 'Current price'} is ${attoToAlph(cost, 4)} ALPH but you have ${attoToAlph(availableAlph, 4)} ALPH.`)
+        setPlaying(false)
+        setPlayingDouble(false)
+        return
+      }
+
       const result = isDouble
         ? await game.transact.playDouble({
             signer,
-            attoAlphAmount: doublePlayCost
+            attoAlphAmount: cost
           })
         : await game.transact.play({
             signer,
-            attoAlphAmount: currentPlayCost
+            attoAlphAmount: cost
           })
       
       updateBalanceForTx(result.txId)
@@ -426,7 +464,11 @@ function App() {
   }
 
   const finalizeBettingRound = async () => {
-    if (wallet === undefined || BETTING_CONTRACT_ADDRESS.length === 0 || currentRoundId === 0n) return
+    if (wallet === undefined || BETTING_CONTRACT_ADDRESS.length === 0) return
+    if (lastSettledRoundId === 0n) {
+      setBetStatus('No settled round yet to finalize.')
+      return
+    }
     setFinalizingBetRound(true)
     setConfirming(true)
     setBetStatus('')
@@ -437,13 +479,13 @@ function App() {
       if (signer === undefined) throw new Error('Connected wallet has no signer.')
       const result = await market.transact.finalizeRound({
         signer,
-        args: { roundId: currentRoundId },
+        args: { roundId: lastSettledRoundId },
         attoAlphAmount: 3n * 10n ** 17n
       })
       updateBalanceForTx(result.txId)
       setBetStatus('Finalize submitted. Awaiting confirmation...')
       await waitForTxConfirmation(result.txId, 1, 1000)
-      setBetStatus('Round finalized for betting.')
+      setBetStatus(`Round #${lastSettledRoundId.toString()} finalized for betting.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setBetStatus(`Finalize failed: ${message}`)
@@ -454,7 +496,11 @@ function App() {
   }
 
   const claimBet = async () => {
-    if (wallet === undefined || BETTING_CONTRACT_ADDRESS.length === 0 || currentRoundId === 0n) return
+    if (wallet === undefined || BETTING_CONTRACT_ADDRESS.length === 0) return
+    if (lastSettledRoundId === 0n) {
+      setBetStatus('No settled round yet to claim.')
+      return
+    }
     setClaimingBet(true)
     setConfirming(true)
     setBetStatus('')
@@ -465,7 +511,7 @@ function App() {
       if (signer === undefined) throw new Error('Connected wallet has no signer.')
       const result = await market.transact.claim({
         signer,
-        args: { roundId: currentRoundId }
+        args: { roundId: lastSettledRoundId }
       })
       updateBalanceForTx(result.txId)
       setBetStatus('Claim submitted. Awaiting confirmation...')
@@ -496,6 +542,9 @@ function App() {
   const hasMyBet = Boolean(myBet?.[0])
   const myBetTarget = hasMyBet ? myBet?.[1] : undefined
   const myBetAmount = hasMyBet ? myBet?.[2] ?? 0n : 0n
+  const hasMyLastSettledBet = Boolean(myLastSettledBet?.[0])
+  const myLastSettledBetTarget = hasMyLastSettledBet ? myLastSettledBet?.[1] : undefined
+  const myLastSettledBetAmount = hasMyLastSettledBet ? myLastSettledBet?.[2] ?? 0n : 0n
   const isBusy = playing || playingDouble || placingBet || finalizingBetRound || claimingBet || confirming
   const selectablePlayers = useMemo(() => {
     if (!state?.currentLeader) return playedPlayers
@@ -623,7 +672,12 @@ function App() {
               {/* Expired State */}
               {isExpired && (
                 <div className="mb-4 rounded border border-[#C9A227]/40 bg-[#C9A227]/10 px-4 py-3 text-center text-sm text-[#1C1C1C]">
-                  <span className="font-semibold">Victory!</span> {state ? formatAddress(state.currentLeader) : '—'} claims {attoToAlph(prizePot, 2)} ALPH.
+                  <p>
+                    <span className="font-semibold">Time's Up!</span> {state ? formatAddress(state.currentLeader) : '—'} wins {attoToAlph(prizePot, 2)} ALPH.
+                  </p>
+                  <p className="mt-1 text-[10px] italic text-[#1C1C1C]/50">
+                    Click below to pay the winner and start a new round
+                  </p>
                 </div>
               )}
 
@@ -643,7 +697,9 @@ function App() {
                         ? 'Submitting...'
                         : confirming && !playingDouble
                           ? 'Confirming...'
-                          : `Enter the Arena — ${attoToAlph(currentPlayCost, 2)}`}
+                          : isExpired
+                            ? `Claim & Start New Round — ${attoToAlph(currentPlayCost, 2)}`
+                            : `Enter the Arena — ${attoToAlph(currentPlayCost, 2)}`}
                 </button>
 
                 {/* Double Play Button - shows Connect Wallet when not connected */}
@@ -709,6 +765,9 @@ function App() {
             <p className="mt-1 text-center text-[10px] italic text-[#1C1C1C]/50">
               Round #{currentRoundId.toString()} • Fee {bettingState ? Number(bettingState.protocolFeeBps) / 100 : 2}%
             </p>
+            <p className="mt-1 text-center text-[10px] italic text-[#1C1C1C]/50">
+              Last settled round: #{lastSettledRoundId.toString()}
+            </p>
 
             {betStatus.length > 0 && (
               <div className="mt-4 rounded border border-[#1C1C1C]/20 bg-white px-3 py-2 text-center text-xs text-[#1C1C1C]/80">
@@ -749,6 +808,11 @@ function App() {
                 Your bet: {attoToAlph(myBetAmount, 2)} ALPH on {formatAddress(myBetTarget)}
               </p>
             )}
+            {hasMyLastSettledBet && myLastSettledBetTarget && (
+              <p className="mt-1 text-center text-[10px] text-[#1C1C1C]/60">
+                Last settled bet: {attoToAlph(myLastSettledBetAmount, 2)} ALPH on {formatAddress(myLastSettledBetTarget)}
+              </p>
+            )}
 
             <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
               <button
@@ -760,14 +824,14 @@ function App() {
               </button>
               <button
                 onClick={finalizeBettingRound}
-                disabled={!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || currentRoundId === 0n || isBusy}
+                disabled={!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || lastSettledRoundId === 0n || isBusy}
                 className="rounded border border-[#1C1C1C]/30 bg-transparent px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {finalizingBetRound ? 'Finalizing...' : 'Finalize Betting'}
               </button>
               <button
                 onClick={claimBet}
-                disabled={!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || currentRoundId === 0n || isBusy}
+                disabled={!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || lastSettledRoundId === 0n || isBusy}
                 className="rounded border border-[#C9A227] bg-[#C9A227]/15 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {claimingBet ? 'Claiming...' : 'Claim'}
