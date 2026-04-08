@@ -133,7 +133,9 @@ Contract CountdownGame(
     @using(updateFields = true)
     fn startRound(caller: Address, now: U256) -> () {
         currentRoundId = currentRoundId + 1
-        currentPot = currentPlayCost
+        // New round pot = player's entry fee + accumulated savings from previous rounds
+        currentPot = currentPlayCost + savingsPot
+        savingsPot = 0
         currentLeader = caller
         currentDurationMs = INITIAL_DURATION_MS
         deadlineMs = now + INITIAL_DURATION_MS

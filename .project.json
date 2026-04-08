@@ -20,9 +20,9 @@
     },
     "CountdownGame": {
       "sourceFile": "countdown_game.ral",
-      "sourceCodeHash": "dcb77b173dbbdca2291232d9aba1ed43bcf292160e396583c0f9d0d157071470",
-      "bytecodeDebugPatch": "=34-2+fd=2-2+41=671-1+a=187-1+c=38+7a7e0214696e73657274206174206d617020706174683a2000=206",
-      "codeHashDebug": "25d17b12fe2e8ba212c5a9089f7d25e73e43a70d72b72c9aa77d15c12ca3638e"
+      "sourceCodeHash": "0b2d2cdb79a557a8b9970909f7cd583fa741e5e6c2de010c57e0394482630125",
+      "bytecodeDebugPatch": "=34-2+fd=2-2+48=671-1+a=187-1+c=38+7a7e0214696e73657274206174206d617020706174683a2000=220",
+      "codeHashDebug": "37da5bef80bae2c3bfb1e6ba2e4d110a84910724dbe0fe7e4393efd8a45549ed"
     },
     "IFungibleToken": {
       "sourceFile": "../node_modules/@alephium/web3/std/fungible_token_interface.ral",

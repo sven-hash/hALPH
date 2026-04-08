@@ -357,8 +357,8 @@ class Factory extends ContractFactory<
 export const CountdownGame = new Factory(
   Contract.fromJson(
     CountdownGameContractJson,
-    "=34-2+fd=2-2+41=671-1+a=187-1+c=38+7a7e0214696e73657274206174206d617020706174683a2000=206",
-    "25d17b12fe2e8ba212c5a9089f7d25e73e43a70d72b72c9aa77d15c12ca3638e",
+    "=34-2+fd=2-2+48=671-1+a=187-1+c=38+7a7e0214696e73657274206174206d617020706174683a2000=220",
+    "37da5bef80bae2c3bfb1e6ba2e4d110a84910724dbe0fe7e4393efd8a45549ed",
     []
   )
 );

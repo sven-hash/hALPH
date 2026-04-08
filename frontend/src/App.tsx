@@ -837,9 +837,10 @@ function App() {
                   <p className="text-xs text-[#1C1C1C]/50">ALPH</p>
                 </div>
                 <div className="rounded-sm border border-[#1C1C1C]/10 bg-white/60 p-4 text-center shadow-sm">
-                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[#1C1C1C]/50">Savings Pot (20%)</p>
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[#1C1C1C]/50">Next Round Seed (20%)</p>
                   <p className="font-roman text-xl font-semibold text-[#1C1C1C] sm:text-2xl">{attoToAlph(totalSavings, 2)}</p>
                   <p className="text-xs text-[#1C1C1C]/50">ALPH</p>
+                  <p className="mt-0.5 text-[9px] italic text-[#1C1C1C]/40">Added to next round's pot</p>
                 </div>
               </div>
             </div>
@@ -911,10 +912,10 @@ function App() {
               </button>
               <button
                 onClick={() => finalizeBettingRound()}
-                disabled={!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || lastSettledRoundId === 0n || isBusy}
+                disabled={!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || lastSettledRoundId === 0n || isBusy || (isRoundActive && !isExpired)}
                 className="rounded border border-[#1C1C1C]/30 bg-transparent px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {finalizingBetRound ? 'Finalizing...' : 'Finalize Betting'}
+                {finalizingBetRound ? 'Finalizing...' : (isRoundActive && !isExpired) ? 'Round Running' : 'Finalize Betting'}
               </button>
               <button
                 onClick={() => claimBet()}
@@ -943,10 +944,10 @@ function App() {
                       <div className="mt-1 flex gap-2">
                         <button
                           onClick={() => finalizeBettingRound(item.roundId)}
-                          disabled={item.finalized || isBusy}
+                          disabled={item.finalized || isBusy || (item.roundId === currentRoundId && isRoundActive && !isExpired)}
                           className="rounded border border-[#1C1C1C]/30 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          Finalize
+                          {(item.roundId === currentRoundId && isRoundActive && !isExpired) ? 'Running' : item.finalized ? 'Done' : 'Finalize'}
                         </button>
                         <button
                           onClick={() => claimBet(item.roundId)}
