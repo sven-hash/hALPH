@@ -62,6 +62,15 @@ function alphToAtto(value: string): bigint | null {
 }
 
 type TimerPart = { value: string; unit: string }
+type UserBetHistoryItem = {
+  roundId: bigint
+  target: string
+  amount: bigint
+  finalized: boolean
+  winner?: string
+  claimed: boolean
+  payout: bigint
+}
 
 function msToTimerParts(ms: bigint): TimerPart[] {
   if (ms <= 0n) {
@@ -330,6 +339,82 @@ function App() {
     refetchIntervalInBackground: true
   })
 
+  const { data: myBetHistory = [] } = useQuery<UserBetHistoryItem[]>({
+    queryKey: ['my-bet-history', NODE_URL, BETTING_CONTRACT_ADDRESS, walletAddress],
+    queryFn: async () => {
+      if (!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0) return []
+      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
+      const provider = web3.getCurrentNodeProvider()
+      let start = 0
+      const byRound = new Map<string, UserBetHistoryItem>()
+      const finalizedByRound = new Map<string, { winner?: string }>()
+      for (let i = 0; i < 200; i += 1) {
+        const page = await provider.events.getEventsContractContractaddress(BETTING_CONTRACT_ADDRESS, { start })
+        for (const event of page.events) {
+          if (event.eventIndex === CountdownBettingMarket.eventIndex.BetPlaced) {
+            const roundId = event.fields[0]?.value
+            const bettor = event.fields[1]?.value
+            const target = event.fields[2]?.value
+            const amount = event.fields[3]?.value
+            if (typeof roundId !== 'string' || typeof bettor !== 'string' || typeof target !== 'string' || typeof amount !== 'string') continue
+            if (bettor !== walletAddress) continue
+            byRound.set(roundId, {
+              roundId: BigInt(roundId),
+              target,
+              amount: BigInt(amount),
+              finalized: byRound.get(roundId)?.finalized ?? false,
+              winner: byRound.get(roundId)?.winner,
+              claimed: false,
+              payout: 0n
+            })
+          } else if (event.eventIndex === CountdownBettingMarket.eventIndex.RoundFinalized) {
+            const roundId = event.fields[0]?.value
+            const winner = event.fields[1]?.value
+            if (typeof roundId !== 'string' || typeof winner !== 'string') continue
+            finalizedByRound.set(roundId, { winner })
+            const existing = byRound.get(roundId)
+            if (existing) {
+              existing.finalized = true
+              existing.winner = winner
+              byRound.set(roundId, existing)
+            }
+          } else if (event.eventIndex === CountdownBettingMarket.eventIndex.Claimed) {
+            const roundId = event.fields[0]?.value
+            const bettor = event.fields[1]?.value
+            const payout = event.fields[3]?.value
+            if (typeof roundId !== 'string' || typeof bettor !== 'string' || typeof payout !== 'string') continue
+            if (bettor !== walletAddress) continue
+            const existing = byRound.get(roundId)
+            if (existing) {
+              existing.claimed = true
+              existing.payout = BigInt(payout)
+              byRound.set(roundId, existing)
+            }
+          }
+        }
+        if (page.nextStart === start) break
+        start = page.nextStart
+      }
+
+      const items = [...byRound.values()]
+        .map((item) => {
+          const finalized = finalizedByRound.get(item.roundId.toString())
+          return {
+            ...item,
+            finalized: item.finalized || finalized !== undefined,
+            winner: item.winner ?? finalized?.winner
+          }
+        })
+        .filter((item) => item.amount > 0n || item.claimed)
+        .sort((a, b) => Number(b.roundId - a.roundId))
+
+      return items
+    },
+    enabled: Boolean(walletAddress) && BETTING_CONTRACT_ADDRESS.length > 0,
+    refetchInterval: 8000,
+    refetchIntervalInBackground: true
+  })
+
   const play = async (isDouble: boolean = false) => {
     if (wallet === undefined) {
       setStatus('Connect your Alephium wallet to enter the arena.')
@@ -463,9 +548,10 @@ function App() {
     }
   }
 
-  const finalizeBettingRound = async () => {
+  const finalizeBettingRound = async (roundId?: bigint) => {
     if (wallet === undefined || BETTING_CONTRACT_ADDRESS.length === 0) return
-    if (lastSettledRoundId === 0n) {
+    const targetRoundId = roundId ?? lastSettledRoundId
+    if (targetRoundId === 0n) {
       setBetStatus('No settled round yet to finalize.')
       return
     }
@@ -479,13 +565,13 @@ function App() {
       if (signer === undefined) throw new Error('Connected wallet has no signer.')
       const result = await market.transact.finalizeRound({
         signer,
-        args: { roundId: lastSettledRoundId },
+        args: { roundId: targetRoundId },
         attoAlphAmount: 3n * 10n ** 17n
       })
       updateBalanceForTx(result.txId)
       setBetStatus('Finalize submitted. Awaiting confirmation...')
       await waitForTxConfirmation(result.txId, 1, 1000)
-      setBetStatus(`Round #${lastSettledRoundId.toString()} finalized for betting.`)
+      setBetStatus(`Round #${targetRoundId.toString()} finalized for betting.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setBetStatus(`Finalize failed: ${message}`)
@@ -495,9 +581,10 @@ function App() {
     }
   }
 
-  const claimBet = async () => {
+  const claimBet = async (roundId?: bigint) => {
     if (wallet === undefined || BETTING_CONTRACT_ADDRESS.length === 0) return
-    if (lastSettledRoundId === 0n) {
+    const targetRoundId = roundId ?? lastSettledRoundId
+    if (targetRoundId === 0n) {
       setBetStatus('No settled round yet to claim.')
       return
     }
@@ -511,12 +598,12 @@ function App() {
       if (signer === undefined) throw new Error('Connected wallet has no signer.')
       const result = await market.transact.claim({
         signer,
-        args: { roundId: lastSettledRoundId }
+        args: { roundId: targetRoundId }
       })
       updateBalanceForTx(result.txId)
       setBetStatus('Claim submitted. Awaiting confirmation...')
       await waitForTxConfirmation(result.txId, 1, 1000)
-      setBetStatus('Claim settled.')
+      setBetStatus(`Claim settled for round #${targetRoundId.toString()}.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setBetStatus(`Claim failed: ${message}`)
@@ -823,19 +910,56 @@ function App() {
                 {placingBet ? 'Placing...' : 'Place Bet'}
               </button>
               <button
-                onClick={finalizeBettingRound}
+                onClick={() => finalizeBettingRound()}
                 disabled={!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || lastSettledRoundId === 0n || isBusy}
                 className="rounded border border-[#1C1C1C]/30 bg-transparent px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {finalizingBetRound ? 'Finalizing...' : 'Finalize Betting'}
               </button>
               <button
-                onClick={claimBet}
+                onClick={() => claimBet()}
                 disabled={!walletAddress || BETTING_CONTRACT_ADDRESS.length === 0 || lastSettledRoundId === 0n || isBusy}
                 className="rounded border border-[#C9A227] bg-[#C9A227]/15 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {claimingBet ? 'Claiming...' : 'Claim'}
               </button>
+            </div>
+
+            <div className="mt-6">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C]/60">My Bets History</p>
+              <div className="max-h-56 overflow-auto rounded border border-[#1C1C1C]/15 bg-white/70 p-2">
+                {myBetHistory.length === 0 ? (
+                  <p className="text-xs text-[#1C1C1C]/50">No bets yet from this wallet.</p>
+                ) : (
+                  myBetHistory.map((item) => (
+                    <div key={item.roundId.toString()} className="mb-2 rounded border border-[#1C1C1C]/10 bg-white p-2">
+                      <p className="text-[11px] text-[#1C1C1C]/80">
+                        Round #{item.roundId.toString()} • {attoToAlph(item.amount, 2)} ALPH on {formatAddress(item.target)}
+                      </p>
+                      <p className="text-[10px] text-[#1C1C1C]/55">
+                        {item.finalized ? `Finalized${item.winner ? ` • Winner ${formatAddress(item.winner)}` : ''}` : 'Not finalized yet'}
+                        {item.claimed ? ` • Claimed ${attoToAlph(item.payout, 2)} ALPH` : ''}
+                      </p>
+                      <div className="mt-1 flex gap-2">
+                        <button
+                          onClick={() => finalizeBettingRound(item.roundId)}
+                          disabled={item.finalized || isBusy}
+                          className="rounded border border-[#1C1C1C]/30 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Finalize
+                        </button>
+                        <button
+                          onClick={() => claimBet(item.roundId)}
+                          disabled={!item.finalized || item.claimed || isBusy}
+                          className="rounded border border-[#C9A227] bg-[#C9A227]/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Claim
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
             <div className="mt-6">

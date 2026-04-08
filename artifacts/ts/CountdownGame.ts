@@ -36,6 +36,8 @@ import {
 import { default as CountdownGameContractJson } from "../CountdownGame.ral.json";
 import { getContractByCodeHash, registerContract } from "./contracts";
 
+import { RalphMap } from "@alephium/web3";
+
 // Custom types for the contract
 export namespace CountdownGameTypes {
   export type Fields = {
@@ -94,6 +96,10 @@ export namespace CountdownGameTypes {
       params: Omit<CallContractParams<{}>, "args">;
       result: CallContractResult<[bigint, Address]>;
     };
+    getSettledWinner: {
+      params: CallContractParams<{ roundId: bigint }>;
+      result: CallContractResult<[boolean, Address]>;
+    };
     continueRound: {
       params: CallContractParams<{
         caller: Address;
@@ -149,6 +155,10 @@ export namespace CountdownGameTypes {
       params: Omit<SignExecuteContractMethodParams<{}>, "args">;
       result: SignExecuteScriptTxResult;
     };
+    getSettledWinner: {
+      params: SignExecuteContractMethodParams<{ roundId: bigint }>;
+      result: SignExecuteScriptTxResult;
+    };
     continueRound: {
       params: SignExecuteContractMethodParams<{
         caller: Address;
@@ -171,6 +181,8 @@ export namespace CountdownGameTypes {
     SignExecuteMethodTable[T]["params"];
   export type SignExecuteMethodResult<T extends keyof SignExecuteMethodTable> =
     SignExecuteMethodTable[T]["result"];
+
+  export type Maps = { settledWinnerByRound?: Map<bigint, Address> };
 }
 
 class Factory extends ContractFactory<
@@ -203,35 +215,54 @@ class Factory extends ContractFactory<
   tests = {
     play: async (
       params: Omit<
-        TestContractParamsWithoutMaps<CountdownGameTypes.Fields, never>,
+        TestContractParams<
+          CountdownGameTypes.Fields,
+          never,
+          CountdownGameTypes.Maps
+        >,
         "args"
       >
-    ): Promise<TestContractResultWithoutMaps<null>> => {
+    ): Promise<TestContractResult<null, CountdownGameTypes.Maps>> => {
       return testMethod(this, "play", params, getContractByCodeHash);
     },
     playDouble: async (
       params: Omit<
-        TestContractParamsWithoutMaps<CountdownGameTypes.Fields, never>,
+        TestContractParams<
+          CountdownGameTypes.Fields,
+          never,
+          CountdownGameTypes.Maps
+        >,
         "args"
       >
-    ): Promise<TestContractResultWithoutMaps<null>> => {
+    ): Promise<TestContractResult<null, CountdownGameTypes.Maps>> => {
       return testMethod(this, "playDouble", params, getContractByCodeHash);
     },
     settleRound: async (
       params: Omit<
-        TestContractParamsWithoutMaps<CountdownGameTypes.Fields, never>,
+        TestContractParams<
+          CountdownGameTypes.Fields,
+          never,
+          CountdownGameTypes.Maps
+        >,
         "args"
       >
-    ): Promise<TestContractResultWithoutMaps<null>> => {
+    ): Promise<TestContractResult<null, CountdownGameTypes.Maps>> => {
       return testMethod(this, "settleRound", params, getContractByCodeHash);
     },
     getRoundSnapshot: async (
       params: Omit<
-        TestContractParamsWithoutMaps<CountdownGameTypes.Fields, never>,
+        TestContractParams<
+          CountdownGameTypes.Fields,
+          never,
+          CountdownGameTypes.Maps
+        >,
         "args"
       >
     ): Promise<
-      TestContractResultWithoutMaps<[boolean, bigint, bigint, Address]>
+      TestContractResult<
+        [boolean, bigint, bigint, Address],
+        CountdownGameTypes.Maps
+      >
     > => {
       return testMethod(
         this,
@@ -242,10 +273,16 @@ class Factory extends ContractFactory<
     },
     getLastSettledRound: async (
       params: Omit<
-        TestContractParamsWithoutMaps<CountdownGameTypes.Fields, never>,
+        TestContractParams<
+          CountdownGameTypes.Fields,
+          never,
+          CountdownGameTypes.Maps
+        >,
         "args"
       >
-    ): Promise<TestContractResultWithoutMaps<[bigint, Address]>> => {
+    ): Promise<
+      TestContractResult<[bigint, Address], CountdownGameTypes.Maps>
+    > => {
       return testMethod(
         this,
         "getLastSettledRound",
@@ -253,20 +290,41 @@ class Factory extends ContractFactory<
         getContractByCodeHash
       );
     },
-    continueRound: async (
-      params: TestContractParamsWithoutMaps<
+    getSettledWinner: async (
+      params: TestContractParams<
         CountdownGameTypes.Fields,
-        { caller: Address; now: bigint; playCost: bigint; isDouble: boolean }
+        { roundId: bigint },
+        CountdownGameTypes.Maps
       >
-    ): Promise<TestContractResultWithoutMaps<null>> => {
+    ): Promise<
+      TestContractResult<[boolean, Address], CountdownGameTypes.Maps>
+    > => {
+      return testMethod(
+        this,
+        "getSettledWinner",
+        params,
+        getContractByCodeHash
+      );
+    },
+    continueRound: async (
+      params: TestContractParams<
+        CountdownGameTypes.Fields,
+        { caller: Address; now: bigint; playCost: bigint; isDouble: boolean },
+        CountdownGameTypes.Maps
+      >
+    ): Promise<TestContractResult<null, CountdownGameTypes.Maps>> => {
       return testMethod(this, "continueRound", params, getContractByCodeHash);
     },
     settleExpiredRound: async (
       params: Omit<
-        TestContractParamsWithoutMaps<CountdownGameTypes.Fields, never>,
+        TestContractParams<
+          CountdownGameTypes.Fields,
+          never,
+          CountdownGameTypes.Maps
+        >,
         "args"
       >
-    ): Promise<TestContractResultWithoutMaps<null>> => {
+    ): Promise<TestContractResult<null, CountdownGameTypes.Maps>> => {
       return testMethod(
         this,
         "settleExpiredRound",
@@ -275,11 +333,12 @@ class Factory extends ContractFactory<
       );
     },
     startRound: async (
-      params: TestContractParamsWithoutMaps<
+      params: TestContractParams<
         CountdownGameTypes.Fields,
-        { caller: Address; now: bigint }
+        { caller: Address; now: bigint },
+        CountdownGameTypes.Maps
       >
-    ): Promise<TestContractResultWithoutMaps<null>> => {
+    ): Promise<TestContractResult<null, CountdownGameTypes.Maps>> => {
       return testMethod(this, "startRound", params, getContractByCodeHash);
     },
   };
@@ -287,9 +346,10 @@ class Factory extends ContractFactory<
   stateForTest(
     initFields: CountdownGameTypes.Fields,
     asset?: Asset,
-    address?: string
+    address?: string,
+    maps?: CountdownGameTypes.Maps
   ) {
-    return this.stateForTest_(initFields, asset, address, undefined);
+    return this.stateForTest_(initFields, asset, address, maps);
   }
 }
 
@@ -297,8 +357,8 @@ class Factory extends ContractFactory<
 export const CountdownGame = new Factory(
   Contract.fromJson(
     CountdownGameContractJson,
-    "",
-    "3f974a303f1020b9be9ed092a4d91efb774f09e63f4d9a135070596b44a1826a",
+    "=34-2+fd=2-2+41=671-1+a=187-1+c=38+7a7e0214696e73657274206174206d617020706174683a2000=206",
+    "25d17b12fe2e8ba212c5a9089f7d25e73e43a70d72b72c9aa77d15c12ca3638e",
     []
   )
 );
@@ -309,6 +369,14 @@ export class CountdownGameInstance extends ContractInstance {
   constructor(address: Address) {
     super(address);
   }
+
+  maps = {
+    settledWinnerByRound: new RalphMap<bigint, Address>(
+      CountdownGame.contract,
+      this.contractId,
+      "settledWinnerByRound"
+    ),
+  };
 
   async fetchState(): Promise<CountdownGameTypes.State> {
     return fetchContractState(CountdownGame, this);
@@ -429,6 +497,17 @@ export class CountdownGameInstance extends ContractInstance {
         getContractByCodeHash
       );
     },
+    getSettledWinner: async (
+      params: CountdownGameTypes.CallMethodParams<"getSettledWinner">
+    ): Promise<CountdownGameTypes.CallMethodResult<"getSettledWinner">> => {
+      return callMethod(
+        CountdownGame,
+        this,
+        "getSettledWinner",
+        params,
+        getContractByCodeHash
+      );
+    },
     continueRound: async (
       params: CountdownGameTypes.CallMethodParams<"continueRound">
     ): Promise<CountdownGameTypes.CallMethodResult<"continueRound">> => {
@@ -498,6 +577,13 @@ export class CountdownGameInstance extends ContractInstance {
         "getLastSettledRound",
         params
       );
+    },
+    getSettledWinner: async (
+      params: CountdownGameTypes.SignExecuteMethodParams<"getSettledWinner">
+    ): Promise<
+      CountdownGameTypes.SignExecuteMethodResult<"getSettledWinner">
+    > => {
+      return signExecuteMethod(CountdownGame, this, "getSettledWinner", params);
     },
     continueRound: async (
       params: CountdownGameTypes.SignExecuteMethodParams<"continueRound">

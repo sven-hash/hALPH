@@ -118,8 +118,8 @@ Contract CountdownBettingMarket(
         let roundKey = encodeToByteVec!(roundId)
         assert!(!finalizedByRound.contains!(roundKey), ErrorCodes.AlreadyFinalized)
 
-        let (settledRoundId, winner) = game.getLastSettledRound()
-        assert!(settledRoundId == roundId, ErrorCodes.RoundNotSettled)
+        let (settled, winner) = game.getSettledWinner(roundId)
+        assert!(settled, ErrorCodes.RoundNotSettled)
 
         let totalPool = if (totalPoolByRound.contains!(roundKey)) totalPoolByRound[roundKey] else 0
         let feeAmount = totalPool * protocolFeeBps / BPS_DENOMINATOR

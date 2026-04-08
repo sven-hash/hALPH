@@ -11,6 +11,8 @@ Contract CountdownGame(
     mut lastSettledRoundId: U256,
     mut lastSettledWinner: Address
 ) {
+    mapping[U256, Address] settledWinnerByRound
+
     event Played(roundId: U256, player: Address, roundPot: U256, deadlineMs: U256, durationMs: U256, playCost: U256)
     event RoundSettled(winner: Address, winnerPayout: U256, savingsAdded: U256)
     event RoundStarted(roundId: U256, starter: Address, deadlineMs: U256)
@@ -77,6 +79,14 @@ Contract CountdownGame(
         return lastSettledRoundId, lastSettledWinner
     }
 
+    pub fn getSettledWinner(roundId: U256) -> (Bool, Address) {
+        if (settledWinnerByRound.contains!(roundId)) {
+            return true, settledWinnerByRound[roundId]
+        } else {
+            return false, lastSettledWinner
+        }
+    }
+
     @using(updateFields = true)
     fn continueRound(caller: Address, now: U256, playCost: U256, isDouble: Bool) -> () {
         currentPot = currentPot + playCost
@@ -108,6 +118,11 @@ Contract CountdownGame(
         roundActive = false
         lastSettledRoundId = currentRoundId
         lastSettledWinner = currentLeader
+        if (settledWinnerByRound.contains!(currentRoundId)) {
+            settledWinnerByRound[currentRoundId] = currentLeader
+        } else {
+            settledWinnerByRound.insert!(selfAddress!(), currentRoundId, currentLeader)
+        }
         currentPot = 0
         currentDurationMs = 0
         deadlineMs = 0

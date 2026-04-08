@@ -88,7 +88,8 @@ describe('CountdownBettingMarket', () => {
         lastSettledWinner: testAddress
       },
       { alphAmount: 50n * ALPH },
-      gameAddress
+      gameAddress,
+      { settledWinnerByRound: new Map([[1n, testAddress]]) }
     )
 
     const finalized = await CountdownBettingMarket.tests.finalizeRound({
