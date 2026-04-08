@@ -298,7 +298,7 @@ export const CountdownGame = new Factory(
   Contract.fromJson(
     CountdownGameContractJson,
     "",
-    "0de90dcb72f872b3ce37a60dfaf991a6dcd640bdf120f155bfc1b6a401e02662",
+    "3f974a303f1020b9be9ed092a4d91efb774f09e63f4d9a135070596b44a1826a",
     []
   )
 );

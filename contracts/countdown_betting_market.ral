@@ -16,56 +16,98 @@ Contract CountdownBettingMarket(
 
     const BPS_DENOMINATOR = 10000
     const MIN_BET = 1e17
+    const THIRTY_MINUTES_MS = 1800000
 
     enum ErrorCodes {
         BetTooSmall = 0
         RoundMismatch = 1
         RoundClosed = 2
         InvalidFeeBps = 3
-        TargetChanged = 4
+        BettingWindowClosed = 4
         NotFinalized = 5
         NoBet = 6
         RoundNotSettled = 7
         AlreadyFinalized = 8
+        InvalidPoolState = 9
     }
 
-    @using(preapprovedAssets = true, payToContractOnly = true, checkExternalCaller = false)
+    @using(preapprovedAssets = true, assetsInContract = true, checkExternalCaller = false)
     pub fn placeBet(roundId: U256, target: Address, amount: U256) -> () {
         assert!(protocolFeeBps < BPS_DENOMINATOR, ErrorCodes.InvalidFeeBps)
-        assert!(amount >= MIN_BET, ErrorCodes.BetTooSmall)
 
         let (roundActive, currentRoundId, deadlineMs, _) = game.getRoundSnapshot()
         let now = blockTimeStamp!()
         assert!(roundActive, ErrorCodes.RoundClosed)
         assert!(currentRoundId == roundId, ErrorCodes.RoundMismatch)
         assert!(now < deadlineMs, ErrorCodes.RoundClosed)
+        assert!(now + THIRTY_MINUTES_MS < deadlineMs, ErrorCodes.BettingWindowClosed)
 
         let bettor = callerAddress!()
-        transferTokenToSelf!(bettor, ALPH, amount)
-
         let roundKey = encodeToByteVec!(roundId)
-        let targetKey = encodeToByteVec!(roundId, target)
         let userKey = encodeToByteVec!(roundId, bettor)
+        let hasBet = userBetByRoundAndBettor.contains!(userKey)
+        let oldTarget = if (hasBet) userTargetByRoundAndBettor[userKey] else target
+        let oldAmount = if (hasBet) userBetByRoundAndBettor[userKey] else 0
 
-        if (totalPoolByRound.contains!(roundKey)) {
-            totalPoolByRound[roundKey] = totalPoolByRound[roundKey] + amount
-        } else {
-            totalPoolByRound.insert!(bettor, roundKey, amount)
+        assert!(hasBet || amount > 0, ErrorCodes.NoBet)
+        if (amount > 0) {
+            assert!(amount >= MIN_BET, ErrorCodes.BetTooSmall)
         }
 
-        if (poolByRoundAndTarget.contains!(targetKey)) {
-            poolByRoundAndTarget[targetKey] = poolByRoundAndTarget[targetKey] + amount
+        if (amount > oldAmount) {
+            transferTokenToSelf!(bettor, ALPH, amount - oldAmount)
+        } else if (oldAmount > amount) {
+            transferTokenFromSelf!(bettor, ALPH, oldAmount - amount)
         } else {
-            poolByRoundAndTarget.insert!(bettor, targetKey, amount)
         }
 
-        if (userBetByRoundAndBettor.contains!(userKey)) {
-            let existingTarget = userTargetByRoundAndBettor[userKey]
-            assert!(existingTarget == target, ErrorCodes.TargetChanged)
-            userBetByRoundAndBettor[userKey] = userBetByRoundAndBettor[userKey] + amount
+        if (oldAmount > 0) {
+            assert!(totalPoolByRound.contains!(roundKey), ErrorCodes.InvalidPoolState)
+            let currentRoundPool = totalPoolByRound[roundKey]
+            assert!(currentRoundPool >= oldAmount, ErrorCodes.InvalidPoolState)
+            let nextRoundPool = currentRoundPool - oldAmount
+            if (nextRoundPool == 0) {
+                totalPoolByRound.remove!(bettor, roundKey)
+            } else {
+                totalPoolByRound[roundKey] = nextRoundPool
+            }
+
+            let oldTargetKey = encodeToByteVec!(roundId, oldTarget)
+            assert!(poolByRoundAndTarget.contains!(oldTargetKey), ErrorCodes.InvalidPoolState)
+            let currentTargetPool = poolByRoundAndTarget[oldTargetKey]
+            assert!(currentTargetPool >= oldAmount, ErrorCodes.InvalidPoolState)
+            let nextTargetPool = currentTargetPool - oldAmount
+            if (nextTargetPool == 0) {
+                poolByRoundAndTarget.remove!(bettor, oldTargetKey)
+            } else {
+                poolByRoundAndTarget[oldTargetKey] = nextTargetPool
+            }
+        }
+
+        if (amount > 0) {
+            if (totalPoolByRound.contains!(roundKey)) {
+                totalPoolByRound[roundKey] = totalPoolByRound[roundKey] + amount
+            } else {
+                totalPoolByRound.insert!(bettor, roundKey, amount)
+            }
+
+            let targetKey = encodeToByteVec!(roundId, target)
+            if (poolByRoundAndTarget.contains!(targetKey)) {
+                poolByRoundAndTarget[targetKey] = poolByRoundAndTarget[targetKey] + amount
+            } else {
+                poolByRoundAndTarget.insert!(bettor, targetKey, amount)
+            }
+
+            if (hasBet) {
+                userBetByRoundAndBettor[userKey] = amount
+                userTargetByRoundAndBettor[userKey] = target
+            } else {
+                userBetByRoundAndBettor.insert!(bettor, userKey, amount)
+                userTargetByRoundAndBettor.insert!(bettor, userKey, target)
+            }
         } else {
-            userBetByRoundAndBettor.insert!(bettor, userKey, amount)
-            userTargetByRoundAndBettor.insert!(bettor, userKey, target)
+            userBetByRoundAndBettor.remove!(bettor, userKey)
+            userTargetByRoundAndBettor.remove!(bettor, userKey)
         }
 
         emit BetPlaced(roundId, bettor, target, amount)

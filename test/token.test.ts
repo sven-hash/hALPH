@@ -69,7 +69,7 @@ describe('CountdownGame', () => {
     expect(state.fields.currentLeader).toEqual(testAddress)
     expect(state.fields.currentPot).toEqual(6n * PLAY_COST)
     expect(state.fields.currentDurationMs).toEqual(8n / 2n + THIRTY_SECONDS_MS)
-    expect(state.fields.currentPlayCost).toEqual((PLAY_COST * 101n) / 100n)
+    expect(state.fields.currentPlayCost).toEqual(PLAY_COST)
   })
 
   it('settles expired round then starts next round', async () => {

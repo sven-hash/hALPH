@@ -91,7 +91,6 @@ Contract CountdownGame(
 
         currentDurationMs = newDuration
         deadlineMs = now + newDuration
-        currentPlayCost = currentPlayCost * 101 / 100
 
         emit Played(currentRoundId, caller, currentPot, deadlineMs, currentDurationMs, playCost)
     }
@@ -112,6 +111,7 @@ Contract CountdownGame(
         currentPot = 0
         currentDurationMs = 0
         deadlineMs = 0
+        currentPlayCost = currentPlayCost * 101 / 100
         emit RoundSettled(currentLeader, winnerPayout, savingsSlice)
     }
 

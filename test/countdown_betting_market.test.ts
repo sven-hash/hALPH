@@ -139,7 +139,7 @@ describe('CountdownBettingMarket', () => {
     ).rejects.toThrow()
   })
 
-  it('rejects changing target within the same round', async () => {
+  it('allows changing target and resizing stake in the same round', async () => {
     const gameState = CountdownGame.stateForTest(baseGameFields(), { alphAmount: 50n * ALPH }, gameAddress)
 
     const firstBet = await CountdownBettingMarket.tests.placeBet({
@@ -150,13 +150,40 @@ describe('CountdownBettingMarket', () => {
     })
 
     const otherTarget = addressFromContractId(randomContractId())
+    const updated = await CountdownBettingMarket.tests.placeBet({
+      ...baseParams,
+      initialMaps: firstBet.maps,
+      args: { roundId: 1n, target: otherTarget, amount: BET_AMOUNT / 2n },
+      inputAssets: [{ address: testAddress, asset: { alphAmount: ALPH } }],
+      existingContracts: [gameState]
+    })
+
+    const userBet = await CountdownBettingMarket.tests.getUserBet({
+      ...baseParams,
+      initialMaps: updated.maps,
+      args: { roundId: 1n, bettor: testAddress }
+    })
+    expect(userBet.returns[0]).toEqual(true)
+    expect(userBet.returns[1]).toEqual(otherTarget)
+    expect(userBet.returns[2]).toEqual(BET_AMOUNT / 2n)
+  })
+
+  it('rejects bet updates in the last 30 minutes', async () => {
+    const almostClosedGame = CountdownGame.stateForTest(
+      {
+        ...baseGameFields(),
+        deadlineMs: 1_799_999n
+      },
+      { alphAmount: 50n * ALPH },
+      gameAddress
+    )
     await expect(
       CountdownBettingMarket.tests.placeBet({
         ...baseParams,
-        initialMaps: firstBet.maps,
-        args: { roundId: 1n, target: otherTarget, amount: BET_AMOUNT },
+        args: { roundId: 1n, target: testAddress, amount: BET_AMOUNT },
+        blockTimeStamp: 0,
         inputAssets: [{ address: testAddress, asset: { alphAmount: 3n * ALPH } }],
-        existingContracts: [gameState]
+        existingContracts: [almostClosedGame]
       })
     ).rejects.toThrow()
   })
