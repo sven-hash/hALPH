@@ -300,6 +300,32 @@ function App() {
   const cleanedWalletAddress = walletAddress ? stripAddressGroup(walletAddress) : undefined
   const availableAlph = BigInt(balance?.balance ?? '0')
 
+  // Fetch ALPH price in USD
+  const { data: alphPriceUsd = 0 } = useQuery({
+    queryKey: ['alph-price-usd'],
+    queryFn: async () => {
+      try {
+        const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=alephium&vs_currencies=usd')
+        const data = await response.json()
+        return data.alephium?.usd ?? 0
+      } catch {
+        return 0
+      }
+    },
+    refetchInterval: 60000,
+    staleTime: 30000
+  })
+
+  const formatUsd = (attoAlph: bigint): string => {
+    if (alphPriceUsd === 0) return ''
+    const alph = Number(attoAlph) / 1e18
+    const usd = alph * alphPriceUsd
+    if (usd < 0.01) return '< $0.01'
+    if (usd < 1) return `$${usd.toFixed(2)}`
+    if (usd < 1000) return `$${usd.toFixed(2)}`
+    return `$${usd.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+  }
+
   const navigateToPage = (nextPage: AppPage) => {
     setActivePage(nextPage)
     if (typeof window === 'undefined') return
@@ -1261,7 +1287,7 @@ function App() {
                   <p className="font-roman text-2xl font-semibold text-[#1C1C1C] sm:text-3xl">
                     {attoToAlph(pot, 2)}
                   </p>
-                  <p className="text-sm text-[#1C1C1C]/60">ALPH</p>
+                  <p className="text-sm text-[#1C1C1C]/60">ALPH {formatUsd(pot) && <span className="text-[#C9A227]">({formatUsd(pot)})</span>}</p>
                   <p className="mt-0.5 text-[10px] italic text-[#1C1C1C]/40">Total prize pool</p>
                 </div>
                 <div className="text-center">
@@ -1271,7 +1297,7 @@ function App() {
                   <p className="font-roman text-2xl font-semibold text-[#1C1C1C] sm:text-3xl">
                     {attoToAlph(currentPlayCost, 2)}
                   </p>
-                  <p className="text-sm text-[#1C1C1C]/60">ALPH</p>
+                  <p className="text-sm text-[#1C1C1C]/60">ALPH {formatUsd(currentPlayCost) && <span className="text-[#1C1C1C]/50">({formatUsd(currentPlayCost)})</span>}</p>
                   <p className="mt-0.5 text-[10px] italic text-[#1C1C1C]/40">Current Entry Fee</p>
                 </div>
               </div>
@@ -1373,12 +1399,12 @@ function App() {
                 <div className="rounded-sm border border-[#1C1C1C]/10 bg-white/60 p-4 text-center shadow-sm">
                   <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[#1C1C1C]/50">Prize Pot (80%)</p>
                   <p className="font-roman text-xl font-semibold text-[#1C1C1C] sm:text-2xl">{attoToAlph(prizePot, 2)}</p>
-                  <p className="text-xs text-[#1C1C1C]/50">ALPH</p>
+                  <p className="text-xs text-[#1C1C1C]/50">ALPH {formatUsd(prizePot) && <span className="text-[#C9A227]">({formatUsd(prizePot)})</span>}</p>
                 </div>
                 <div className="rounded-sm border border-[#1C1C1C]/10 bg-white/60 p-4 text-center shadow-sm">
                   <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[#1C1C1C]/50">Next Round Seed (20%)</p>
                   <p className="font-roman text-xl font-semibold text-[#1C1C1C] sm:text-2xl">{attoToAlph(totalSavings, 2)}</p>
-                  <p className="text-xs text-[#1C1C1C]/50">ALPH</p>
+                  <p className="text-xs text-[#1C1C1C]/50">ALPH {formatUsd(totalSavings) && <span className="text-[#1C1C1C]/40">({formatUsd(totalSavings)})</span>}</p>
                   <p className="mt-0.5 text-[9px] italic text-[#1C1C1C]/40">Added to next round's pot</p>
                 </div>
               </div>
@@ -1397,7 +1423,7 @@ function App() {
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-[#1C1C1C]/55">Game Pool</p>
-                  <p className="font-roman text-lg text-[#1C1C1C]">{attoToAlph(pot, 2)} ALPH</p>
+                  <p className="font-roman text-lg text-[#1C1C1C]">{attoToAlph(pot, 2)} ALPH {formatUsd(pot) && <span className="text-xs text-[#C9A227]">({formatUsd(pot)})</span>}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-[#1C1C1C]/55">Countdown</p>
@@ -1421,6 +1447,7 @@ function App() {
               <div className="text-center">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C]/60">Total Prediction Pool</p>
                 <p className="font-roman text-xl font-bold text-[#C9A227]">{attoToAlph(totalBettingPool, 2)} <span className="text-sm font-normal">ALPH</span></p>
+                {formatUsd(totalBettingPool) && <p className="text-xs text-[#1C1C1C]/50">{formatUsd(totalBettingPool)}</p>}
               </div>
               <div className="text-center">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C]/60">Favorite</p>
