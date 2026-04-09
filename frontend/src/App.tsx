@@ -1133,7 +1133,7 @@ function App() {
         <AlephiumConnectButton />
       </header>
 
-      <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center px-4 py-8">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1700px] flex-col items-center px-4 py-8 sm:px-6 xl:px-10">
         
         {/* Laurel & Title */}
         <div className="mb-8 flex flex-col items-center text-center">
@@ -1173,9 +1173,9 @@ function App() {
               <RomanColumn side="left" />
               
               {/* Dark Marble Frame */}
-              <div className="dark-marble-frame relative w-full max-w-xl overflow-hidden rounded-sm border-4 border-[#8B7355] shadow-2xl">
+              <div className="dark-marble-frame relative w-full max-w-[52rem] overflow-hidden rounded-sm border-4 border-[#8B7355] shadow-2xl xl:max-w-[64rem]">
                 {/* Inner cream/white content area */}
-                <div className="relative bg-[#F5F0E8] px-6 py-8 sm:px-10 sm:py-10">
+                <div className="relative bg-[#F5F0E8] px-6 py-8 sm:px-10 sm:py-10 lg:px-14 lg:py-12">
               
               {/* Current Emperor */}
               <div className="mb-6 flex flex-col items-center">
@@ -1317,7 +1317,7 @@ function App() {
             </div>
 
             {/* Prize & Savings Pots */}
-            <div className="mt-8 w-full max-w-xl">
+            <div className="mt-8 w-full max-w-[52rem] xl:max-w-[64rem]">
               <div className="mb-6 h-px w-full bg-gradient-to-r from-transparent via-[#C9A227]/60 to-transparent" />
               <div className="grid grid-cols-2 gap-6">
                 <div className="rounded-sm border border-[#1C1C1C]/10 bg-white/60 p-4 text-center shadow-sm">
@@ -1337,7 +1337,7 @@ function App() {
         )}
 
         {activePage === 'betting' && (
-          <div className="w-full max-w-2xl rounded-sm border-4 border-[#8B7355] bg-[#F5F0E8] px-6 py-8 shadow-2xl sm:px-10">
+          <div className="w-full max-w-4xl rounded-sm border-4 border-[#8B7355] bg-[#F5F0E8] px-6 py-8 shadow-2xl sm:px-10 lg:max-w-5xl lg:px-12 xl:max-w-6xl">
             <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#1C1C1C]/70">On-chain Winner Betting</p>
             <div className="mt-3 rounded border border-[#1C1C1C]/15 bg-white/70 p-3">
               <div className="grid grid-cols-3 gap-2 text-center">
@@ -1656,7 +1656,7 @@ function App() {
         )}
 
         {activePage === 'instructions' && (
-          <div className="w-full max-w-2xl rounded-sm border-4 border-[#8B7355] bg-[#F5F0E8] px-6 py-8 shadow-2xl sm:px-10">
+          <div className="w-full max-w-4xl rounded-sm border-4 border-[#8B7355] bg-[#F5F0E8] px-6 py-8 shadow-2xl sm:px-10 lg:max-w-5xl lg:px-12 xl:max-w-6xl">
             <h2 className="font-roman text-2xl font-semibold text-[#1C1C1C] mb-6 text-center">How to Play</h2>
             
             <div className="space-y-6 text-sm text-[#1C1C1C]/80">
