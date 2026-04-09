@@ -1295,6 +1295,16 @@ function App() {
                 </div>
               )}
 
+              {/* No Round Active */}
+              {!isRoundActive && !isExpired && (
+                <div className="mb-4 rounded border border-[#8B7355]/40 bg-[#8B7355]/10 px-4 py-3 text-center text-sm text-[#1C1C1C]">
+                  <p className="font-semibold">The Coliseum is waiting for you</p>
+                  <p className="mt-1 text-[10px] italic text-[#1C1C1C]/50">
+                    Be the first to start a new round and claim the throne
+                  </p>
+                </div>
+              )}
+
               {/* Play Buttons */}
               <div className="space-y-3">
                 {/* Single Play Button - shows Connect Wallet when not connected */}
@@ -1313,22 +1323,22 @@ function App() {
                           ? 'Confirming...'
                           : isExpired
                             ? `Claim & Start New Round — ${attoToAlph(currentPlayCost, 2)}`
-                            : `Enter the Arena — ${attoToAlph(currentPlayCost, 2)}`}
+                            : !isRoundActive
+                              ? `Start a New Round — ${attoToAlph(currentPlayCost, 2)}`
+                              : `Enter the Arena — ${attoToAlph(currentPlayCost, 2)}`}
                 </button>
 
-                {/* Double Play Button - shows Connect Wallet when not connected */}
-                <button
-                  onClick={() => walletAddress ? play(true) : connect()}
-                  disabled={walletAddress ? (!canPlay || isBusy || !hasEnoughForDouble || !isRoundActive || isExpired) : false}
-                  className="mx-auto flex w-full max-w-xs items-center justify-center gap-2 rounded-sm border-2 border-[#C9A227] bg-[#C9A227]/10 px-8 py-3 font-roman text-sm font-semibold uppercase tracking-[0.2em] text-[#1C1C1C] transition-all duration-200 hover:bg-[#C9A227]/20 focus:outline-none focus:ring-2 focus:ring-[#C9A227]/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
-                >
-                  <Zap size={16} className="text-[#C9A227]" />
-                  {!walletAddress
-                    ? 'Connect Wallet'
-                    : !isRoundActive
-                      ? 'Start Round First'
-                      : isExpired
-                        ? 'Round Expired'
+                {/* Double Play Button - only show when round is active and not expired */}
+                {isRoundActive && !isExpired && (
+                  <>
+                    <button
+                      onClick={() => walletAddress ? play(true) : connect()}
+                      disabled={walletAddress ? (!canPlay || isBusy || !hasEnoughForDouble) : false}
+                      className="mx-auto flex w-full max-w-xs items-center justify-center gap-2 rounded-sm border-2 border-[#C9A227] bg-[#C9A227]/10 px-8 py-3 font-roman text-sm font-semibold uppercase tracking-[0.2em] text-[#1C1C1C] transition-all duration-200 hover:bg-[#C9A227]/20 focus:outline-none focus:ring-2 focus:ring-[#C9A227]/50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
+                    >
+                      <Zap size={16} className="text-[#C9A227]" />
+                      {!walletAddress
+                        ? 'Connect Wallet'
                         : !hasEnoughForDouble
                           ? 'Need More ALPH'
                           : playingDouble
@@ -1336,11 +1346,13 @@ function App() {
                             : confirming && playingDouble
                               ? 'Confirming...'
                               : `Double Down — ${attoToAlph(doublePlayCost, 2)}`}
-                </button>
-                
-                <p className="text-center text-[10px] italic text-[#1C1C1C]/50">
-                  Double down halves the timer twice (÷4)
-                </p>
+                    </button>
+                    
+                    <p className="text-center text-[10px] italic text-[#1C1C1C]/50">
+                      Double down halves the timer twice (÷4)
+                    </p>
+                  </>
+                )}
               </div>
               
               {walletAddress && !hasEnoughForSingle && (
