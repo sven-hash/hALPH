@@ -94,12 +94,6 @@ type UserBetHistoryItem = {
   payout: bigint
 }
 
-type LatestRoundBet = {
-  bettor: string
-  target: string
-  amount: bigint
-}
-
 type StoredActiveBetStatus = 'pending' | 'confirmed' | 'claimed'
 type StoredActiveBet = {
   wallet: string
@@ -115,6 +109,7 @@ type ActiveBetView = {
   amount: bigint
   status: StoredActiveBetStatus
 }
+type AppPage = 'game' | 'betting' | 'instructions'
 
 const THIRTY_MINUTES_MS = 30n * 60n * 1000n
 const BET_STORAGE_PREFIX = 'halph.active-bet.'
@@ -152,6 +147,18 @@ function writeStoredActiveBet(walletAddress: string, payload: StoredActiveBet): 
 
 function clearStoredActiveBet(walletAddress: string): void {
   window.localStorage.removeItem(getBetStorageKey(walletAddress))
+}
+
+function pageFromPath(pathname: string): AppPage {
+  if (pathname === '/betting') return 'betting'
+  if (pathname === '/howto') return 'instructions'
+  return 'game'
+}
+
+function pathFromPage(page: AppPage): string {
+  if (page === 'betting') return '/betting'
+  if (page === 'instructions') return '/howto'
+  return '/'
 }
 
 function msToTimerParts(ms: bigint): TimerPart[] {
@@ -251,7 +258,10 @@ function RomanColumn({ side }: { side: 'left' | 'right' }) {
 
 function App() {
   const queryClient = useQueryClient()
-  const [activePage, setActivePage] = useState<'game' | 'betting' | 'instructions'>('game')
+  const [activePage, setActivePage] = useState<AppPage>(() => {
+    if (typeof window === 'undefined') return 'game'
+    return pageFromPath(window.location.pathname)
+  })
   const [status, setStatus] = useState<string>('')
   const [betStatus, setBetStatus] = useState<string>('')
   const [playing, setPlaying] = useState(false)
@@ -277,9 +287,26 @@ function App() {
   const cleanedWalletAddress = walletAddress ? stripAddressGroup(walletAddress) : undefined
   const availableAlph = BigInt(balance?.balance ?? '0')
 
+  const navigateToPage = (nextPage: AppPage) => {
+    setActivePage(nextPage)
+    if (typeof window === 'undefined') return
+    const nextPath = pathFromPage(nextPage)
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, '', nextPath)
+    }
+  }
+
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(BigInt(Date.now())), 1000)
     return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActivePage(pageFromPath(window.location.pathname))
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
   useEffect(() => {
@@ -586,40 +613,6 @@ function App() {
       }
       
       return { totalPool, byPlayer }
-    },
-    enabled: BETTING_CONTRACT_ADDRESS.length > 0 && currentRoundId > 0n,
-    refetchInterval: 8000,
-    refetchIntervalInBackground: true
-  })
-
-  const { data: latestRoundBet } = useQuery<LatestRoundBet | null>({
-    queryKey: ['latest-round-bet', NODE_URL, BETTING_CONTRACT_ADDRESS, currentRoundId.toString()],
-    queryFn: async () => {
-      if (BETTING_CONTRACT_ADDRESS.length === 0 || currentRoundId === 0n) return null
-      web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
-      const provider = web3.getCurrentNodeProvider()
-      let start = 0
-      let latest: LatestRoundBet | null = null
-      for (let i = 0; i < 200; i += 1) {
-        const page = await provider.events.getEventsContractContractaddress(BETTING_CONTRACT_ADDRESS, { start })
-        for (const event of page.events) {
-          if (event.eventIndex !== CountdownBettingMarket.eventIndex.BetPlaced) continue
-          const roundId = event.fields[0]?.value
-          const bettor = event.fields[1]?.value
-          const target = event.fields[2]?.value
-          const amount = event.fields[3]?.value
-          if (typeof roundId !== 'string' || typeof bettor !== 'string' || typeof target !== 'string' || typeof amount !== 'string') continue
-          if (BigInt(roundId) !== currentRoundId) continue
-          latest = {
-            bettor: stripAddressGroup(bettor),
-            target: stripAddressGroup(target),
-            amount: BigInt(amount)
-          }
-        }
-        if (page.nextStart === start) break
-        start = page.nextStart
-      }
-      return latest
     },
     enabled: BETTING_CONTRACT_ADDRESS.length > 0 && currentRoundId > 0n,
     refetchInterval: 8000,
@@ -1153,19 +1146,19 @@ function App() {
           </p>
           <div className="mt-4 flex gap-2">
             <button
-              onClick={() => setActivePage('game')}
+              onClick={() => navigateToPage('game')}
               className={`rounded border px-4 py-1 text-xs font-semibold uppercase tracking-wider ${activePage === 'game' ? 'border-[#8B7355] bg-[#8B7355]/15 text-[#1C1C1C]' : 'border-[#1C1C1C]/25 bg-white/50 text-[#1C1C1C]/70'}`}
             >
               Game
             </button>
             <button
-              onClick={() => setActivePage('betting')}
+              onClick={() => navigateToPage('betting')}
               className={`rounded border px-4 py-1 text-xs font-semibold uppercase tracking-wider ${activePage === 'betting' ? 'border-[#8B7355] bg-[#8B7355]/15 text-[#1C1C1C]' : 'border-[#1C1C1C]/25 bg-white/50 text-[#1C1C1C]/70'}`}
             >
               Betting
             </button>
             <button
-              onClick={() => setActivePage('instructions')}
+              onClick={() => navigateToPage('instructions')}
               className={`rounded border px-4 py-1 text-xs font-semibold uppercase tracking-wider ${activePage === 'instructions' ? 'border-[#8B7355] bg-[#8B7355]/15 text-[#1C1C1C]' : 'border-[#1C1C1C]/25 bg-white/50 text-[#1C1C1C]/70'}`}
             >
               How to Play
@@ -1364,9 +1357,12 @@ function App() {
                 </div>
               </div>
               {currentLeader && (
-                <p className="mt-2 text-center text-[10px] text-[#1C1C1C]/60">
-                  Current leader: <span className="font-mono">{formatAddressWithYou(currentLeader, walletAddress)}</span>
-                </p>
+                <div className="mt-3 rounded border border-[#8B7355]/30 bg-[#8B7355]/10 px-3 py-2 text-center">
+                  <p className="text-[10px] uppercase tracking-wider text-[#1C1C1C]/55">Current Leader</p>
+                  <p className="mt-1 break-all font-mono text-base font-semibold text-[#1C1C1C] sm:text-lg">
+                    {formatAddressWithYou(currentLeader, walletAddress)}
+                  </p>
+                </div>
               )}
             </div>
 
@@ -1388,20 +1384,6 @@ function App() {
                 )}
               </div>
             </div>
-            <div className="mt-2 rounded border border-[#1C1C1C]/10 bg-white/50 px-3 py-2 text-center">
-              <p className="text-[10px] uppercase tracking-wider text-[#1C1C1C]/55">Current Bettor</p>
-              {latestRoundBet ? (
-                <p className="mt-1 text-[11px] text-[#1C1C1C]/75">
-                  <span className="font-mono">{formatAddressWithYou(latestRoundBet.bettor, walletAddress)}</span>
-                  {' '}backed{' '}
-                  <span className="font-mono">{formatAddressWithYou(latestRoundBet.target, walletAddress)}</span>
-                  {' '}with {attoToAlph(latestRoundBet.amount, 2)} ALPH
-                </p>
-              ) : (
-                <p className="mt-1 text-[11px] text-[#1C1C1C]/55">No bets in this round yet.</p>
-              )}
-            </div>
-
             {/* Per-player betting breakdown with odds */}
             {bettingByPlayer.size > 0 && (
               <div className="mt-4">
