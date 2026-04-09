@@ -227,4 +227,17 @@ Contract CountdownBettingMarket(
         }
     }
 
+    // Calculate payout for an existing bet (doesn't add amount to pools)
+    pub fn getClaimablePayout(roundId: U256, target: Address, betAmount: U256) -> U256 {
+        let roundKey = encodeToByteVec!(roundId)
+        let targetKey = encodeToByteVec!(roundId, target)
+        let totalPool = if (totalPoolByRound.contains!(roundKey)) totalPoolByRound[roundKey] else 0
+        let targetPool = if (poolByRoundAndTarget.contains!(targetKey)) poolByRoundAndTarget[targetKey] else 0
+        if (targetPool == 0) {
+            return 0
+        } else {
+            return betAmount * totalPool / targetPool
+        }
+    }
+
 }

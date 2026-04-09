@@ -101,6 +101,14 @@ export namespace CountdownBettingMarketTypes {
       }>;
       result: CallContractResult<bigint>;
     };
+    getClaimablePayout: {
+      params: CallContractParams<{
+        roundId: bigint;
+        target: Address;
+        betAmount: bigint;
+      }>;
+      result: CallContractResult<bigint>;
+    };
   }
   export type CallMethodParams<T extends keyof CallMethodTable> =
     CallMethodTable[T]["params"];
@@ -154,6 +162,14 @@ export namespace CountdownBettingMarketTypes {
         roundId: bigint;
         target: Address;
         amount: bigint;
+      }>;
+      result: SignExecuteScriptTxResult;
+    };
+    getClaimablePayout: {
+      params: SignExecuteContractMethodParams<{
+        roundId: bigint;
+        target: Address;
+        betAmount: bigint;
       }>;
       result: SignExecuteScriptTxResult;
     };
@@ -271,6 +287,22 @@ class Factory extends ContractFactory<
     > => {
       return testMethod(this, "quotePayout", params, getContractByCodeHash);
     },
+    getClaimablePayout: async (
+      params: TestContractParams<
+        CountdownBettingMarketTypes.Fields,
+        { roundId: bigint; target: Address; betAmount: bigint },
+        CountdownBettingMarketTypes.Maps
+      >
+    ): Promise<
+      TestContractResult<bigint, CountdownBettingMarketTypes.Maps>
+    > => {
+      return testMethod(
+        this,
+        "getClaimablePayout",
+        params,
+        getContractByCodeHash
+      );
+    },
   };
 
   stateForTest(
@@ -287,8 +319,8 @@ class Factory extends ContractFactory<
 export const CountdownBettingMarket = new Factory(
   Contract.fromJson(
     CountdownBettingMarketContractJson,
-    "=5-7=2-1=2-1=2+9=2-2+f8=2+9c4=1-1+f748b7=12-2+91=209-1+d=38+7a7e0214696e73657274206174206d617020706174683a2000=327-1+7=127-1+b=38+7a7e021472656d6f7665206174206d617020706174683a2000=201-1+b=38+7a7e021472656d6f7665206174206d617020706174683a2000=69-1+9=131-1+b=38+7a7e0214696e73657274206174206d617020706174683a2000=161-1+b=38+7a7e0214696e73657274206174206d617020706174683a2000=115-1+6=38+7a7e0214696e73657274206174206d617020706174683a2000=50+7a7e0214696e73657274206174206d617020706174683a2000=15-1+4=38+7a7e021472656d6f7665206174206d617020706174683a2000=44+7a7e021472656d6f7665206174206d617020706174683a2000=39-1+e=396+7a7e0214696e73657274206174206d617020706174683a2000=46+7a7e0214696e73657274206174206d617020706174683a2000=45-1+f=560+7a7e021472656d6f7665206174206d617020706174683a2000=44+7a7e021472656d6f7665206174206d617020706174683a2000=942",
-    "55dac3f7f1a24c97737cde631477033fc69425d4ee2c96889687d9541947a029",
+    "=5-7=2-1=2-1=2+9=2-2+f8=2-2+9c=3+748=1+74940=12-2+91=209-1+d=38+7a7e0214696e73657274206174206d617020706174683a2000=327-1+7=127-1+b=38+7a7e021472656d6f7665206174206d617020706174683a2000=201-1+b=38+7a7e021472656d6f7665206174206d617020706174683a2000=69-1+9=131-1+b=38+7a7e0214696e73657274206174206d617020706174683a2000=161-1+b=38+7a7e0214696e73657274206174206d617020706174683a2000=115-1+6=38+7a7e0214696e73657274206174206d617020706174683a2000=50+7a7e0214696e73657274206174206d617020706174683a2000=15-1+4=38+7a7e021472656d6f7665206174206d617020706174683a2000=44+7a7e021472656d6f7665206174206d617020706174683a2000=39-1+e=396+7a7e0214696e73657274206174206d617020706174683a2000=46+7a7e0214696e73657274206174206d617020706174683a2000=45-1+f=560+7a7e021472656d6f7665206174206d617020706174683a2000=44+7a7e021472656d6f7665206174206d617020706174683a2000=1216",
+    "cbdea3a54412cac5d42990fc384fa055e84ae0877eed7cbb7f640c2a9e924abf",
     []
   )
 );
@@ -467,6 +499,19 @@ export class CountdownBettingMarketInstance extends ContractInstance {
         getContractByCodeHash
       );
     },
+    getClaimablePayout: async (
+      params: CountdownBettingMarketTypes.CallMethodParams<"getClaimablePayout">
+    ): Promise<
+      CountdownBettingMarketTypes.CallMethodResult<"getClaimablePayout">
+    > => {
+      return callMethod(
+        CountdownBettingMarket,
+        this,
+        "getClaimablePayout",
+        params,
+        getContractByCodeHash
+      );
+    },
   };
 
   transact = {
@@ -534,6 +579,18 @@ export class CountdownBettingMarketInstance extends ContractInstance {
         CountdownBettingMarket,
         this,
         "quotePayout",
+        params
+      );
+    },
+    getClaimablePayout: async (
+      params: CountdownBettingMarketTypes.SignExecuteMethodParams<"getClaimablePayout">
+    ): Promise<
+      CountdownBettingMarketTypes.SignExecuteMethodResult<"getClaimablePayout">
+    > => {
+      return signExecuteMethod(
+        CountdownBettingMarket,
+        this,
+        "getClaimablePayout",
         params
       );
     },

@@ -100,6 +100,8 @@ function sanitizeBetAmountInput(raw: string): string {
   return result
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
 type TimerPart = { value: string; unit: string }
 type UserBetHistoryItem = {
   roundId: bigint
@@ -744,6 +746,8 @@ function App() {
       setStatus('Transaction submitted. Awaiting confirmation...')
       setConfirming(true)
       await waitForTxConfirmation(result.txId, 1, 1000)
+      setStatus('Confirmed! Refreshing...')
+      await sleep(3000)
       setStatus('')
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -846,6 +850,8 @@ function App() {
         status: 'confirmed',
         txId: result.txId
       })
+      setBetStatus('Confirmed! Refreshing...')
+      await sleep(3000)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['my-bet'] }),
         queryClient.invalidateQueries({ queryKey: ['my-bet-history'] }),
@@ -892,7 +898,9 @@ function App() {
         updateBalanceForTx(settleResult.txId)
         setPendingTxId(settleResult.txId)
         await waitForTxConfirmation(settleResult.txId, 1, 1000)
-        setBetStatus('Round settled. Finalizing predictions...')
+        setBetStatus('Round settled. Refreshing...')
+        await sleep(3000)
+        setBetStatus('Finalizing predictions...')
       }
       
       // Refresh state to get updated lastSettledRoundId
@@ -914,6 +922,8 @@ function App() {
       setPendingTxId(result.txId)
       setBetStatus('Finalize submitted. Awaiting confirmation...')
       await waitForTxConfirmation(result.txId, 1, 1000)
+      setBetStatus('Confirmed! Refreshing...')
+      await sleep(3000)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['my-bet-history'] }),
         queryClient.invalidateQueries({ queryKey: ['countdown-state'] }),
@@ -965,6 +975,8 @@ function App() {
         })
         setLocalActiveBet({ ...localActiveBet, status: 'claimed' })
       }
+      setBetStatus('Confirmed! Refreshing...')
+      await sleep(3000)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['my-bet-history'] }),
         queryClient.invalidateQueries({ queryKey: ['my-last-settled-bet'] })
@@ -1080,11 +1092,11 @@ function App() {
       }
       web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
       const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
-      const result = await market.view.quotePayout({
+      const result = await market.view.getClaimablePayout({
         args: {
           roundId: lastSettledRoundId,
           target: myLastSettledBetTarget,
-          amount: myLastSettledBetAmount
+          betAmount: myLastSettledBetAmount
         }
       })
       return result.returns
@@ -1113,11 +1125,11 @@ function App() {
       if (!activeBet || BETTING_CONTRACT_ADDRESS.length === 0) return 0n
       web3.setCurrentNodeProvider(NODE_URL, undefined, fetcher)
       const market = CountdownBettingMarket.at(BETTING_CONTRACT_ADDRESS)
-      const result = await market.view.quotePayout({
+      const result = await market.view.getClaimablePayout({
         args: {
           roundId: activeBet.roundId,
           target: activeBet.target,
-          amount: activeBet.amount
+          betAmount: activeBet.amount
         }
       })
       return result.returns
