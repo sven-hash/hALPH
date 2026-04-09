@@ -238,15 +238,6 @@ function getHalvedCount(durationMs: bigint): number {
   return count
 }
 
-function LaurelWreath({ className = '' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 100 50" className={className} fill="currentColor">
-      <path d="M50 45 C35 45 22 38 15 28 C20 32 28 34 36 32 C28 34 22 30 18 24 C23 28 32 30 40 27 C32 29 25 25 22 19 C27 23 36 25 44 21 C36 23 30 19 28 14 C33 17 40 18 47 15 C41 17 37 14 36 10 C40 12 45 12 50 10" strokeWidth="1.5" stroke="currentColor" fill="none"/>
-      <path d="M50 45 C65 45 78 38 85 28 C80 32 72 34 64 32 C72 34 78 30 82 24 C77 28 68 30 60 27 C68 29 75 25 78 19 C73 23 64 25 56 21 C64 23 70 19 72 14 C67 17 60 18 53 15 C59 17 63 14 64 10 C60 12 55 12 50 10" strokeWidth="1.5" stroke="currentColor" fill="none"/>
-    </svg>
-  )
-}
-
 function RomanColumn({ side }: { side: 'left' | 'right' }) {
   return (
     <div className={`hidden lg:flex flex-col items-center ${side === 'left' ? 'mr-4' : 'ml-4'}`}>
@@ -1154,9 +1145,8 @@ function App() {
         
         {/* Laurel & Title */}
         <div className="mb-8 flex flex-col items-center text-center">
-          <LaurelWreath className="mb-2 h-12 w-24 text-[#C9A227]" />
           <h1 className="font-roman text-4xl font-semibold tracking-wide text-[#1C1C1C] sm:text-5xl md:text-6xl">
-            THE <span className="lowercase">h</span>ALPHING
+            The <span className="lowercase">h</span>ALPHing
           </h1>
           <p className="mt-2 text-base font-light italic tracking-wide text-[#1C1C1C]/60 sm:text-lg">
             Timer-halving survival game
@@ -1196,11 +1186,11 @@ function App() {
               
               {/* Current Emperor */}
               <div className="mb-6 flex flex-col items-center">
-                <div className="mb-1 flex items-center gap-2 text-sm font-medium italic text-[#1C1C1C]/70">
+                <div className="mb-1 flex items-center gap-2 text-base font-semibold italic text-[#1C1C1C]/75 sm:text-lg">
                   <span>Current Emperor</span>
-                  <Crown size={16} strokeWidth={1.5} className="text-[#C9A227]" />
+                  <Crown size={20} strokeWidth={1.75} className="text-[#C9A227]" />
                 </div>
-                <p className="font-mono text-sm text-[#1C1C1C]/80">
+                <p className="font-mono text-base text-[#1C1C1C]/85 sm:text-lg">
                   {isLoading ? '...' : currentLeader ? formatAddressWithYou(currentLeader, walletAddress) : '—'}
                 </p>
               </div>
@@ -1242,6 +1232,7 @@ function App() {
                     {attoToAlph(pot, 2)}
                   </p>
                   <p className="text-sm text-[#1C1C1C]/60">ALPH</p>
+                  <p className="mt-0.5 text-[10px] italic text-[#1C1C1C]/40">Total prize pool</p>
                 </div>
                 <div className="text-center">
                   <p className="mb-1 text-xs font-bold uppercase tracking-[0.25em] text-[#1C1C1C]/70">
