@@ -15,7 +15,7 @@ const queryClient = new QueryClient()
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AlephiumWalletProvider network={network} theme="web95">
+      <AlephiumWalletProvider network={network} theme="nouns" addressGroup={0}>
         <App />
       </AlephiumWalletProvider>
     </QueryClientProvider>
