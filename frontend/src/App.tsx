@@ -149,16 +149,28 @@ function clearStoredActiveBet(walletAddress: string): void {
   window.localStorage.removeItem(getBetStorageKey(walletAddress))
 }
 
-function pageFromPath(pathname: string): AppPage {
-  if (pathname === '/betting') return 'betting'
-  if (pathname === '/howto') return 'instructions'
+function getBasePath(): string {
+  const base = import.meta.env.BASE_URL || '/'
+  return base.endsWith('/') ? base : `${base}/`
+}
+
+function pageFromLocation(pathname: string, hash: string): AppPage {
+  const normalizedHash = hash.replace(/^#/, '')
+  if (normalizedHash === '/betting') return 'betting'
+  if (normalizedHash === '/howto') return 'instructions'
+
+  const base = getBasePath()
+  const withoutBase = pathname.startsWith(base) ? pathname.slice(base.length - 1) : pathname
+  if (withoutBase === '/betting') return 'betting'
+  if (withoutBase === '/howto') return 'instructions'
   return 'game'
 }
 
-function pathFromPage(page: AppPage): string {
-  if (page === 'betting') return '/betting'
-  if (page === 'instructions') return '/howto'
-  return '/'
+function urlFromPage(page: AppPage): string {
+  const base = getBasePath()
+  if (page === 'betting') return `${base}#/betting`
+  if (page === 'instructions') return `${base}#/howto`
+  return `${base}#/`
 }
 
 function msToTimerParts(ms: bigint): TimerPart[] {
@@ -260,7 +272,7 @@ function App() {
   const queryClient = useQueryClient()
   const [activePage, setActivePage] = useState<AppPage>(() => {
     if (typeof window === 'undefined') return 'game'
-    return pageFromPath(window.location.pathname)
+    return pageFromLocation(window.location.pathname, window.location.hash)
   })
   const [status, setStatus] = useState<string>('')
   const [betStatus, setBetStatus] = useState<string>('')
@@ -290,9 +302,10 @@ function App() {
   const navigateToPage = (nextPage: AppPage) => {
     setActivePage(nextPage)
     if (typeof window === 'undefined') return
-    const nextPath = pathFromPage(nextPage)
-    if (window.location.pathname !== nextPath) {
-      window.history.pushState({}, '', nextPath)
+    const nextUrl = urlFromPage(nextPage)
+    const currentUrl = `${window.location.pathname}${window.location.hash || ''}`
+    if (currentUrl !== nextUrl) {
+      window.history.pushState({}, '', nextUrl)
     }
   }
 
@@ -302,11 +315,15 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const handlePopState = () => {
-      setActivePage(pageFromPath(window.location.pathname))
+    const syncPageFromLocation = () => {
+      setActivePage(pageFromLocation(window.location.pathname, window.location.hash))
     }
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
+    window.addEventListener('popstate', syncPageFromLocation)
+    window.addEventListener('hashchange', syncPageFromLocation)
+    return () => {
+      window.removeEventListener('popstate', syncPageFromLocation)
+      window.removeEventListener('hashchange', syncPageFromLocation)
+    }
   }, [])
 
   useEffect(() => {
@@ -740,15 +757,15 @@ function App() {
 
   const placeBet = async () => {
     if (wallet === undefined) {
-      setBetStatus('Connect your wallet to place a bet.')
+      setBetStatus('Connect your wallet to place a prediction.')
       return
     }
     if (BETTING_CONTRACT_ADDRESS.length === 0) {
-      setBetStatus('Missing betting contract address.')
+      setBetStatus('Missing prediction contract address.')
       return
     }
     if (!isRoundActive) {
-      setBetStatus('Betting is open only during an active round.')
+      setBetStatus('Predicting is open only during an active round.')
       return
     }
     const target = cleanedBetTarget
@@ -761,11 +778,11 @@ function App() {
       return
     }
     if (!isBetAmountValid || betAmount === null) {
-      setBetStatus(`Minimum bet is ${attoToAlph(minBet, 2)} ALPH.`)
+      setBetStatus(`Minimum prediction is ${attoToAlph(minBet, 2)} ALPH.`)
       return
     }
     if (availableAlph < betAmount) {
-      setBetStatus('Insufficient ALPH balance for this bet.')
+      setBetStatus('Insufficient ALPH balance for this prediction.')
       return
     }
 
@@ -804,7 +821,7 @@ function App() {
         status: 'pending',
         txId: result.txId
       })
-      setBetStatus('Bet submitted. Awaiting confirmation...')
+      setBetStatus('Prediction submitted. Awaiting confirmation...')
       await waitForTxConfirmation(result.txId, 1, 1000)
       setLocalActiveBet({
         roundId: currentRoundId,
@@ -825,14 +842,14 @@ function App() {
         queryClient.invalidateQueries({ queryKey: ['my-bet-history'] }),
         queryClient.invalidateQueries({ queryKey: ['betting-stats'] })
       ])
-      setBetStatus('Bet confirmed on-chain.')
+      setBetStatus('Prediction confirmed on-chain.')
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (cleanedWalletAddress) {
         clearStoredActiveBet(cleanedWalletAddress)
       }
       setLocalActiveBet(null)
-      setBetStatus(`Bet failed: ${message}`)
+      setBetStatus(`Prediction failed: ${message}`)
     } finally {
       setPlacingBet(false)
       setConfirming(false)
@@ -866,7 +883,7 @@ function App() {
         updateBalanceForTx(settleResult.txId)
         setPendingTxId(settleResult.txId)
         await waitForTxConfirmation(settleResult.txId, 1, 1000)
-        setBetStatus('Round settled. Finalizing betting...')
+        setBetStatus('Round settled. Finalizing predictions...')
       }
       
       // Refresh state to get updated lastSettledRoundId
@@ -894,7 +911,7 @@ function App() {
         queryClient.invalidateQueries({ queryKey: ['round-snapshot'] }),
         queryClient.invalidateQueries({ queryKey: ['finalized-round-ids'] })
       ])
-      setBetStatus(`Round #${finalizeRoundId.toString()} finalized for betting.`)
+      setBetStatus(`Round #${finalizeRoundId.toString()} finalized for predictions.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setBetStatus(`Finalize failed: ${message}`)
@@ -1155,7 +1172,7 @@ function App() {
               onClick={() => navigateToPage('betting')}
               className={`rounded border px-4 py-1 text-xs font-semibold uppercase tracking-wider ${activePage === 'betting' ? 'border-[#8B7355] bg-[#8B7355]/15 text-[#1C1C1C]' : 'border-[#1C1C1C]/25 bg-white/50 text-[#1C1C1C]/70'}`}
             >
-              Betting
+              Predicting
             </button>
             <button
               onClick={() => navigateToPage('instructions')}
@@ -1338,7 +1355,7 @@ function App() {
 
         {activePage === 'betting' && (
           <div className="w-full max-w-4xl rounded-sm border-4 border-[#8B7355] bg-[#F5F0E8] px-6 py-8 shadow-2xl sm:px-10 lg:max-w-5xl lg:px-12 xl:max-w-6xl">
-            <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#1C1C1C]/70">On-chain Winner Betting</p>
+            <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#1C1C1C]/70">On-chain Winner Prediction</p>
             <div className="mt-3 rounded border border-[#1C1C1C]/15 bg-white/70 p-3">
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div>
@@ -1366,10 +1383,10 @@ function App() {
               )}
             </div>
 
-            {/* Betting Stats */}
+            {/* Prediction Stats */}
             <div className="mt-4 grid grid-cols-2 gap-4 rounded border border-[#C9A227]/30 bg-[#C9A227]/5 p-4">
               <div className="text-center">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C]/60">Total Betting Pool</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C]/60">Total Prediction Pool</p>
                 <p className="font-roman text-xl font-bold text-[#C9A227]">{attoToAlph(totalBettingPool, 2)} <span className="text-sm font-normal">ALPH</span></p>
               </div>
               <div className="text-center">
@@ -1380,14 +1397,14 @@ function App() {
                     <p className="text-[10px] text-[#C9A227]">{attoToAlph(topBetPlayer.amount, 2)} ALPH ({totalBettingPool > 0n ? Math.round(Number(topBetPlayer.amount * 100n / totalBettingPool)) : 0}%)</p>
                   </>
                 ) : (
-                  <p className="text-xs text-[#1C1C1C]/50">No bets yet</p>
+                  <p className="text-xs text-[#1C1C1C]/50">No predictions yet</p>
                 )}
               </div>
             </div>
-            {/* Per-player betting breakdown with odds */}
+            {/* Per-player prediction breakdown with odds */}
             {bettingByPlayer.size > 0 && (
               <div className="mt-4">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C]/50">Betting Odds</p>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[#1C1C1C]/50">Prediction Odds</p>
                 <div className="rounded border border-[#1C1C1C]/10 bg-white/50 overflow-hidden">
                   <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 bg-[#1C1C1C]/5 text-[9px] font-semibold uppercase tracking-wider text-[#1C1C1C]/50">
                     <span>Player</span>
@@ -1438,12 +1455,12 @@ function App() {
               </div>
             )}
 
-            {/* Betting window closed warning */}
+            {/* Prediction window closed warning */}
             {isBettingWindowClosed && isRoundActive && (
               <div className="mt-4 rounded border border-[#C9A227]/40 bg-[#C9A227]/10 px-4 py-3 text-center">
-                <p className="text-sm font-semibold text-[#1C1C1C]">Betting Window Closed</p>
+                <p className="text-sm font-semibold text-[#1C1C1C]">Prediction Window Closed</p>
                 <p className="mt-1 text-[10px] text-[#1C1C1C]/60">
-                  Betting closes 30 minutes before the timer ends. Wait for the next round.
+                  Prediction closes 30 minutes before the timer ends. Wait for the next round.
                 </p>
               </div>
             )}
@@ -1531,7 +1548,7 @@ function App() {
             )}
 
             <div className="mt-3 text-center text-[10px] text-[#1C1C1C]/55">
-              Min bet: {attoToAlph(minBet, 2)} ALPH
+              Min prediction: {attoToAlph(minBet, 2)} ALPH
               {!isBettingWindowClosed && payoutQuote > 0n && betAmount !== null && betAmount > 0n && (
                 <span className="ml-2 rounded bg-[#C9A227]/15 px-2 py-0.5 font-semibold text-[#C9A227]">
                   Est. payout: {attoToAlph(payoutQuote, 2)} ALPH ({(Number(payoutQuote * 100n / betAmount) / 100).toFixed(2)}x)
@@ -1541,7 +1558,7 @@ function App() {
             </div>
             {shouldShowActiveBetPanel && activeBet && (
               <div className="mt-4 rounded border border-[#8B7355]/35 bg-[#8B7355]/5 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-[#1C1C1C]/65">Active Bet</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#1C1C1C]/65">Active Prediction</p>
                 <p className="mt-1 text-[11px] text-[#1C1C1C]/75">
                   {activeBet.status === 'pending' ? 'Pending confirmation...' : 'Confirmed on-chain.'}
                 </p>
@@ -1560,7 +1577,7 @@ function App() {
                 disabled={!canPlaceBet || isBusy || isBettingWindowClosed}
                 className="w-full rounded border border-[#8B7355] bg-[#8B7355]/10 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {placingBet ? 'Placing...' : isBettingWindowClosed ? 'Betting Closed' : hasMyBet ? 'Update Bet' : 'Place Bet'}
+                {placingBet ? 'Submitting...' : isBettingWindowClosed ? 'Prediction Closed' : hasMyBet ? 'Update Prediction' : 'Place Prediction'}
               </button>
             </div>
 
@@ -1683,7 +1700,7 @@ function App() {
               </section>
 
               <section>
-                <h3 className="font-roman text-lg font-semibold text-[#C9A227] mb-2">Betting</h3>
+                <h3 className="font-roman text-lg font-semibold text-[#C9A227] mb-2">Predicting</h3>
                 <p>
                   You can also bet on who you think will win the current round. Place bets on any player who has entered the arena.
                   If your chosen player wins, you receive a proportional share of the betting pool based on your stake.
@@ -1714,16 +1731,6 @@ function App() {
                     <strong>Connect & Play</strong> — Click "Connect Wallet" and enter the arena!
                   </li>
                 </ol>
-              </section>
-
-              <section>
-                <h3 className="font-roman text-lg font-semibold text-[#C9A227] mb-2">Testnet Faucet</h3>
-                <p>
-                  Playing on testnet? Get free test ALPH from the{' '}
-                  <a href="https://faucet.testnet.alephium.org/" target="_blank" rel="noopener noreferrer" className="text-[#C9A227] underline hover:text-[#8B7355]">
-                    Alephium Testnet Faucet
-                  </a>
-                </p>
               </section>
 
               <section className="border-t border-[#1C1C1C]/10 pt-4">
