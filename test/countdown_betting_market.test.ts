@@ -40,7 +40,8 @@ describe('CountdownBettingMarket', () => {
       initialFields: {
         game: gameId,
         protocolFeeBps: 0n,
-        feePot: 0n
+        feePot: 0n,
+        carryOverPot: 0n
       },
       initialAsset: { alphAmount: 50n * ALPH },
       args: {}
@@ -187,5 +188,101 @@ describe('CountdownBettingMarket', () => {
         existingContracts: [almostClosedGame]
       })
     ).rejects.toThrow()
+  })
+
+  it('accrues carry-over pot across rounds with no winners', async () => {
+    const firstRoundActive = CountdownGame.stateForTest(baseGameFields(), { alphAmount: 50n * ALPH }, gameAddress)
+    const firstBet = await CountdownBettingMarket.tests.placeBet({
+      ...baseParams,
+      args: { roundId: 1n, target: testAddress, amount: BET_AMOUNT },
+      inputAssets: [{ address: testAddress, asset: { alphAmount: 3n * ALPH } }],
+      existingContracts: [firstRoundActive]
+    })
+
+    const winnerRound1 = addressFromContractId(randomContractId())
+    const firstRoundSettled = CountdownGame.stateForTest(
+      {
+        ...baseGameFields(),
+        roundActive: false,
+        lastSettledRoundId: 1n,
+        lastSettledWinner: winnerRound1,
+        currentRoundId: 2n
+      },
+      { alphAmount: 50n * ALPH },
+      gameAddress,
+      { settledWinnerByRound: new Map([[1n, winnerRound1]]) }
+    )
+
+    const finalizedRound1 = await CountdownBettingMarket.tests.finalizeRound({
+      ...baseParams,
+      initialMaps: firstBet.maps,
+      args: { roundId: 1n },
+      inputAssets: [{ address: testAddress, asset: { alphAmount: ALPH } }],
+      existingContracts: [firstRoundSettled]
+    })
+
+    const marketAfterRound1 = finalizedRound1.contracts.find((state) => state.address === marketAddress) as CountdownBettingMarketTypes.State
+    expect(marketAfterRound1).toBeDefined()
+    expect(marketAfterRound1.fields.carryOverPot).toEqual(BET_AMOUNT)
+
+    const secondRoundActive = CountdownGame.stateForTest(
+      {
+        ...baseGameFields(),
+        roundActive: true,
+        currentRoundId: 2n,
+        deadlineMs: 9_999_999_999_999n
+      },
+      { alphAmount: 50n * ALPH },
+      gameAddress
+    )
+
+    const secondRoundBetAmount = 2n * ALPH
+    const secondBet = await CountdownBettingMarket.tests.placeBet({
+      ...baseParams,
+      initialFields: marketAfterRound1.fields,
+      initialMaps: finalizedRound1.maps,
+      args: { roundId: 2n, target: testAddress, amount: secondRoundBetAmount },
+      inputAssets: [{ address: testAddress, asset: { alphAmount: 4n * ALPH } }],
+      existingContracts: [secondRoundActive]
+    })
+    const marketAfterSecondBet = secondBet.contracts.find((state) => state.address === marketAddress) as CountdownBettingMarketTypes.State
+    expect(marketAfterSecondBet).toBeDefined()
+
+    const poolsRound2 = await CountdownBettingMarket.tests.getRoundPools({
+      ...baseParams,
+      initialFields: marketAfterSecondBet.fields,
+      initialMaps: secondBet.maps,
+      args: { roundId: 2n, target: testAddress },
+      existingContracts: [secondRoundActive]
+    })
+    expect(poolsRound2.returns[0]).toEqual(BET_AMOUNT + secondRoundBetAmount)
+    expect(poolsRound2.returns[1]).toEqual(secondRoundBetAmount)
+
+    const winnerRound2 = addressFromContractId(randomContractId())
+    const secondRoundSettled = CountdownGame.stateForTest(
+      {
+        ...baseGameFields(),
+        roundActive: false,
+        lastSettledRoundId: 2n,
+        lastSettledWinner: winnerRound2,
+        currentRoundId: 3n
+      },
+      { alphAmount: 50n * ALPH },
+      gameAddress,
+      { settledWinnerByRound: new Map([[2n, winnerRound2]]) }
+    )
+
+    const finalizedRound2 = await CountdownBettingMarket.tests.finalizeRound({
+      ...baseParams,
+      initialFields: marketAfterSecondBet.fields,
+      initialMaps: secondBet.maps,
+      args: { roundId: 2n },
+      inputAssets: [{ address: testAddress, asset: { alphAmount: ALPH } }],
+      existingContracts: [secondRoundSettled]
+    })
+
+    const marketAfterRound2 = finalizedRound2.contracts.find((state) => state.address === marketAddress) as CountdownBettingMarketTypes.State
+    expect(marketAfterRound2).toBeDefined()
+    expect(marketAfterRound2.fields.carryOverPot).toEqual(BET_AMOUNT + secondRoundBetAmount)
   })
 })
