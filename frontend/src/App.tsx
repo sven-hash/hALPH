@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Crown, Zap } from 'lucide-react'
 import deploymentsData from '../../deployments/.deployments.testnet.json'
+import columnImage from './assets/column.png'
 
 function getDeploymentsArray() {
   return Array.isArray(deploymentsData) ? deploymentsData : [deploymentsData]
@@ -256,21 +257,12 @@ function getHalvedCount(durationMs: bigint): number {
 
 function RomanColumn({ side }: { side: 'left' | 'right' }) {
   return (
-    <div className={`hidden lg:flex flex-col items-center ${side === 'left' ? 'mr-4' : 'ml-4'}`}>
-      {/* Capital */}
-      <div className="w-16 h-8 bg-gradient-to-b from-stone-200 to-stone-300 rounded-t-sm border-b-4 border-stone-400 shadow-inner" />
-      {/* Hourglass decoration */}
-      <div className="w-12 h-20 my-2 flex items-center justify-center">
-        <svg viewBox="0 0 40 60" className="w-10 h-16 text-stone-400">
-          <path d="M8 5 L32 5 L32 8 L28 8 L20 25 L28 42 L32 42 L32 55 L8 55 L8 42 L12 42 L20 25 L12 8 L8 8 Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-          <path d="M14 10 L26 10 L20 22 Z" fill="currentColor" opacity="0.3"/>
-          <path d="M14 50 L26 50 L20 38 Z" fill="currentColor" opacity="0.5"/>
-        </svg>
-      </div>
-      {/* Shaft */}
-      <div className="w-12 flex-1 min-h-[200px] bg-gradient-to-r from-stone-300 via-stone-100 to-stone-300 shadow-lg" style={{ backgroundImage: 'repeating-linear-gradient(to right, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px)' }} />
-      {/* Base */}
-      <div className="w-20 h-6 bg-gradient-to-t from-stone-300 to-stone-200 rounded-b-sm border-t-2 border-stone-400" />
+    <div className={`hidden lg:block self-stretch ${side === 'left' ? 'mr-1' : 'ml-1'}`}>
+      <img 
+        src={columnImage} 
+        alt="Roman column" 
+        className={`h-full w-[50px] rounded-lg object-cover object-top ${side === 'right' ? 'scale-x-[-1]' : ''}`}
+      />
     </div>
   )
 }
