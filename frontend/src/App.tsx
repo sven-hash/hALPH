@@ -83,6 +83,22 @@ function alphToAtto(value: string): bigint | null {
   return BigInt(whole) * 10n ** 18n + BigInt(paddedFraction)
 }
 
+function sanitizeBetAmountInput(raw: string): string {
+  const withDot = raw.replace(/,/g, '.')
+  let result = ''
+  let dotSeen = false
+  for (const char of withDot) {
+    if (char >= '0' && char <= '9') {
+      result += char
+    } else if (char === '.' && !dotSeen) {
+      result += char
+      dotSeen = true
+    }
+  }
+  if (result.startsWith('.')) return `0${result}`
+  return result
+}
+
 type TimerPart = { value: string; unit: string }
 type UserBetHistoryItem = {
   roundId: bigint
@@ -370,9 +386,10 @@ function App() {
   const lastSettledRoundId = state?.lastSettledRoundId ?? 0n
   const minBet = CountdownBettingMarket.consts.MIN_BET
   const betAmount = alphToAtto(betAmountInput)
+  const isBetAmountPositive = betAmount !== null && betAmount > 0n
   const cleanedBetTarget = stripAddressGroup(betTarget.trim())
   const isBetTargetValidAddress = cleanedBetTarget.length > 0 && isValidAlephiumAddress(cleanedBetTarget)
-  const isBetAmountValid = betAmount !== null && betAmount >= minBet
+  const isBetAmountValid = betAmount !== null && betAmount >= minBet && betAmount > 0n
   const timeLeftForBetting = isRoundActive && roundDeadlineMs > nowMs ? roundDeadlineMs - nowMs : 0n
   const bettingWindowOpen = timeLeftForBetting >= THIRTY_MINUTES_MS
   const canPlaceBet =
@@ -381,6 +398,7 @@ function App() {
     isRoundActive &&
     bettingWindowOpen &&
     isBetTargetValidAddress &&
+    isBetAmountPositive &&
     isBetAmountValid &&
     betAmount !== null &&
     availableAlph >= betAmount
@@ -759,6 +777,10 @@ function App() {
       setBetStatus('Predicting is open only during an active round.')
       return
     }
+    if (!bettingWindowOpen) {
+      setBetStatus('Predictions close 30 minutes before round end.')
+      return
+    }
     const target = cleanedBetTarget
     if (target.length === 0) {
       setBetStatus('Enter the target address you want to back.')
@@ -768,7 +790,11 @@ function App() {
       setBetStatus('Enter a valid Alephium address.')
       return
     }
-    if (!isBetAmountValid || betAmount === null) {
+    if (betAmount === null || betAmount <= 0n) {
+      setBetStatus('Bet amount must be greater than 0.')
+      return
+    }
+    if (!isBetAmountValid) {
       setBetStatus(`Minimum prediction is ${attoToAlph(minBet, 2)} ALPH.`)
       return
     }
@@ -1495,15 +1521,22 @@ function App() {
                 <label className="mt-2 block text-xs font-medium text-[#1C1C1C]/70">Bet Amount</label>
                 <div className="relative">
                   <input
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*[.,]?[0-9]*"
+                    enterKeyHint="done"
                     value={betAmountInput}
-                    onChange={(event) => setBetAmountInput(event.target.value)}
+                    onChange={(event) => setBetAmountInput(sanitizeBetAmountInput(event.target.value))}
                     placeholder="0.1"
                     disabled={isBettingWindowClosed}
                     className="w-full rounded border border-[#1C1C1C]/25 bg-white px-3 py-2 pr-16 text-sm text-[#1C1C1C] focus:border-[#8B7355] focus:outline-none disabled:cursor-not-allowed"
                   />
                   <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#1C1C1C]/55">ALPH</span>
                 </div>
-                {betAmountInput.trim().length > 0 && !isBetAmountValid && (
+                {betAmountInput.trim().length > 0 && !isBetAmountPositive && (
+                  <p className="text-[11px] text-red-600">Bet amount must be greater than 0.</p>
+                )}
+                {betAmountInput.trim().length > 0 && isBetAmountPositive && !isBetAmountValid && (
                   <p className="text-[11px] text-red-600">Minimum amount is {attoToAlph(minBet, 2)} ALPH.</p>
                 )}
               </div>
