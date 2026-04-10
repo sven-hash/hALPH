@@ -1,0 +1,4 @@
+TxScript FinalizeBettingRound(game: CountdownGame, market: CountdownBettingMarket, roundId: U256) {
+    game.settleRound()
+    market.finalizeRound{callerAddress!() -> ALPH: 0.3 alph}(roundId)
+}
