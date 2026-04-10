@@ -3,6 +3,7 @@ import { validateAddress, waitForTxConfirmation, web3 } from '@alephium/web3'
 import { AlephiumConnectButton, useBalance, useWallet, useConnect } from '@alephium/web3-react'
 import { CountdownGame } from '../../artifacts/ts/CountdownGame'
 import { CountdownBettingMarket } from '../../artifacts/ts/CountdownBettingMarket'
+import { FinalizeBettingRound } from '../../artifacts/ts/scripts'
 import type { CountdownGameTypes } from '../../artifacts/ts/CountdownGame'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -912,36 +913,23 @@ function App() {
       const signer = wallet.signer
       if (signer === undefined) throw new Error('Connected wallet has no signer.')
       
-      // First, check if we need to settle the game round
       const gameState = await game.fetchState()
-      const now = BigInt(Date.now())
-      const roundExpired = gameState.fields.roundActive && now >= gameState.fields.deadlineMs
-      
-      if (roundExpired) {
-        // Settle the expired game round first
-        setBetStatus('Settling expired round...')
-        const settleResult = await game.transact.settleRound({ signer })
-        updateBalanceForTx(settleResult.txId)
-        setPendingTxId(settleResult.txId)
-        await waitForTxConfirmation(settleResult.txId, 1, 1000)
-        setBetStatus('Round settled. Refreshing...')
-        await sleep(3000)
-        setBetStatus('Finalizing predictions...')
-      }
-      
-      // Refresh state to get updated lastSettledRoundId
-      const updatedState = await game.fetchState()
-      const finalizeRoundId = targetRoundId !== 0n ? targetRoundId : updatedState.fields.lastSettledRoundId
-      
+      const finalizeRoundId = targetRoundId !== 0n ? targetRoundId : gameState.fields.lastSettledRoundId
+
       if (finalizeRoundId === 0n) {
         setBetStatus('No settled round yet to finalize.')
         return
       }
-      
-      // Now finalize the betting round
-      const result = await market.transact.finalizeRound({
+
+      // Single tx: settle game (no-op if not expired) + betting finalize (FinalizeBettingRound.ral)
+      setBetStatus('Submitting settle + finalize...')
+      const result = await FinalizeBettingRound.execute({
         signer,
-        args: { roundId: finalizeRoundId },
+        initialFields: {
+          game: game.contractId,
+          market: market.contractId,
+          roundId: finalizeRoundId
+        },
         attoAlphAmount: 3n * 10n ** 17n
       })
       updateBalanceForTx(result.txId)

@@ -12,7 +12,17 @@ import {
   HexString,
 } from "@alephium/web3";
 import { getContractByCodeHash } from "./contracts";
+import { default as FinalizeBettingRoundScriptJson } from "../FinalizeBettingRound.ral.json";
 import { default as WithdrawScriptJson } from "../Withdraw.ral.json";
+
+export const FinalizeBettingRound = new ExecutableScript<{
+  game: HexString;
+  market: HexString;
+  roundId: bigint;
+}>(
+  Script.fromJson(FinalizeBettingRoundScriptJson, "", []),
+  getContractByCodeHash
+);
 
 export const Withdraw = new ExecutableScript<{
   token: HexString;
