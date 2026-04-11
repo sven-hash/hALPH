@@ -372,16 +372,19 @@ function App() {
         if (page.nextStart === start) break
         start = page.nextStart
       }
-      if (targetsInRound.size === 0) {
-        return { totalPool: 0n, byPlayer: new Map<string, bigint>() }
-      }
       let totalPool = 0n
       const byPlayer = new Map<string, bigint>()
-      for (const target of targetsInRound) {
-        const pools = await market.view.getRoundPools({ args: { roundId: currentRoundId, target } })
-        if (totalPool === 0n) totalPool = pools.returns[0]
-        const targetPool = pools.returns[1]
-        if (targetPool > 0n) byPlayer.set(target, targetPool)
+      if (targetsInRound.size === 0) {
+        // No bets yet — carry-over pot may still exist; read it from contract state
+        const marketState = await market.fetchState()
+        totalPool = marketState.fields.carryOverPot
+      } else {
+        for (const target of targetsInRound) {
+          const pools = await market.view.getRoundPools({ args: { roundId: currentRoundId, target } })
+          if (totalPool === 0n) totalPool = pools.returns[0]
+          const targetPool = pools.returns[1]
+          if (targetPool > 0n) byPlayer.set(target, targetPool)
+        }
       }
       return { totalPool, byPlayer }
     },
