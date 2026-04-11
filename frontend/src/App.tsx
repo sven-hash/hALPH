@@ -680,6 +680,7 @@ function App() {
   const hasMyBet = Boolean(myBet?.[0])
   const myBetTarget = hasMyBet ? stripAddressGroup(myBet?.[1] ?? '') : undefined
   const myBetAmount = hasMyBet ? myBet?.[2] ?? 0n : 0n
+  const isSameAsExistingBet = hasMyBet && betAmount !== null && cleanedBetTarget === myBetTarget && betAmount === myBetAmount
   const hasMyLastSettledBet = Boolean(myLastSettledBet?.[0])
   const myLastSettledBetTarget = hasMyLastSettledBet ? stripAddressGroup(myLastSettledBet?.[1] ?? '') : undefined
   const myLastSettledBetAmount = hasMyLastSettledBet ? myLastSettledBet?.[2] ?? 0n : 0n
@@ -874,6 +875,7 @@ function App() {
             bettingWindowOpen={bettingWindowOpen}
             isBettingWindowClosed={isBettingWindowClosed}
             canPlaceBet={canPlaceBet}
+            isSameAsExistingBet={isSameAsExistingBet}
             betStatus={betStatus}
             placingBet={placingBet}
             finalizingBetRound={finalizingBetRound}

@@ -25,7 +25,7 @@ describe('CountdownBettingMarket', () => {
   let marketAddress: string
   let gameId: string
   let gameAddress: string
-  let baseParams: TestContractParams<CountdownBettingMarketTypes.Fields, Record<string, never>, CountdownBettingMarketTypes.Maps>
+  let baseParams: TestContractParams<CountdownBettingMarketTypes.Fields, Record<string, never>, Partial<CountdownBettingMarketTypes.Maps>>
 
   beforeAll(() => {
     web3.setCurrentNodeProvider('http://127.0.0.1:22973', undefined, fetch)
@@ -39,8 +39,6 @@ describe('CountdownBettingMarket', () => {
       contractAddress: marketAddress,
       initialFields: {
         game: gameId,
-        protocolFeeBps: 0n,
-        feePot: 0n,
         carryOverPot: 0n
       },
       initialAsset: { alphAmount: 50n * ALPH },
@@ -106,7 +104,6 @@ describe('CountdownBettingMarket', () => {
     expect(finalizedEvent?.fields.roundId).toEqual(1n)
     const finalizedMarketState = finalized.contracts.find((state) => state.address === marketAddress)
     expect(finalizedMarketState).toBeDefined()
-    expect((finalizedMarketState as CountdownBettingMarketTypes.State).fields.feePot).toEqual(0n)
 
     const claimed = await CountdownBettingMarket.tests.claim({
       ...baseParams,

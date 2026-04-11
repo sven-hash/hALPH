@@ -42,8 +42,6 @@ import { RalphMap } from "@alephium/web3";
 export namespace CountdownBettingMarketTypes {
   export type Fields = {
     game: HexString;
-    protocolFeeBps: bigint;
-    feePot: bigint;
     carryOverPot: bigint;
   };
 
@@ -59,13 +57,16 @@ export namespace CountdownBettingMarketTypes {
     roundId: bigint;
     winner: Address;
     totalPool: bigint;
-    feeAmount: bigint;
   }>;
   export type ClaimedEvent = ContractEvent<{
     roundId: bigint;
     bettor: Address;
     target: Address;
     payout: bigint;
+  }>;
+  export type CarryOverRolledEvent = ContractEvent<{
+    roundId: bigint;
+    amount: bigint;
   }>;
 
   export interface CallMethodTable {
@@ -184,8 +185,8 @@ export namespace CountdownBettingMarketTypes {
     poolByRoundAndTarget?: Map<HexString, bigint>;
     userBetByRoundAndBettor?: Map<HexString, bigint>;
     userTargetByRoundAndBettor?: Map<HexString, Address>;
-    finalizedByRound?: Map<HexString, boolean>;
     winnerByRound?: Map<HexString, Address>;
+    bettorCountByRound?: Map<HexString, bigint>;
   };
 }
 
@@ -201,7 +202,12 @@ class Factory extends ContractFactory<
     );
   }
 
-  eventIndex = { BetPlaced: 0, RoundFinalized: 1, Claimed: 2 };
+  eventIndex = {
+    BetPlaced: 0,
+    RoundFinalized: 1,
+    Claimed: 2,
+    CarryOverRolled: 3,
+  };
   consts = {
     MIN_BET: BigInt("100000000000000000"),
     THIRTY_MINUTES_MS: BigInt("1800000"),
@@ -209,7 +215,6 @@ class Factory extends ContractFactory<
       BetTooSmall: BigInt("0"),
       RoundMismatch: BigInt("1"),
       RoundClosed: BigInt("2"),
-      InvalidFeeBps: BigInt("3"),
       BettingWindowClosed: BigInt("4"),
       NotFinalized: BigInt("5"),
       NoBet: BigInt("6"),
@@ -319,8 +324,8 @@ class Factory extends ContractFactory<
 export const CountdownBettingMarket = new Factory(
   Contract.fromJson(
     CountdownBettingMarketContractJson,
-    "=5-7=2-1=2-1=2+9=2-2+f8=2-2+9c=3+748=1+74940=12-2+91=209-1+d=38+7a7e0214696e73657274206174206d617020706174683a2000=327-1+7=127-1+b=38+7a7e021472656d6f7665206174206d617020706174683a2000=201-1+b=38+7a7e021472656d6f7665206174206d617020706174683a2000=69-1+9=131-1+b=38+7a7e0214696e73657274206174206d617020706174683a2000=161-1+b=38+7a7e0214696e73657274206174206d617020706174683a2000=115-1+6=38+7a7e0214696e73657274206174206d617020706174683a2000=50+7a7e0214696e73657274206174206d617020706174683a2000=15-1+4=38+7a7e021472656d6f7665206174206d617020706174683a2000=44+7a7e021472656d6f7665206174206d617020706174683a2000=39-1+e=396+7a7e0214696e73657274206174206d617020706174683a2000=46+7a7e0214696e73657274206174206d617020706174683a2000=45-1+f=560+7a7e021472656d6f7665206174206d617020706174683a2000=44+7a7e021472656d6f7665206174206d617020706174683a2000=1216",
-    "cbdea3a54412cac5d42990fc384fa055e84ae0877eed7cbb7f640c2a9e924abf",
+    "=5+546=1-1+6=1-2=2+919=1-3+9bd=1-2=1+18=1+ad=1-2=1-1+b6=1-5=12-2+e0=197-1+3=46+7a7e0214696e73657274206174206d617020706174683a2000=339-1+7=127-1+b=38+7a7e021472656d6f7665206174206d617020706174683a2000=201-1+b=38+7a7e021472656d6f7665206174206d617020706174683a2000=69-1+d=131-1+b=38+7a7e0214696e73657274206174206d617020706174683a2000=161-1+b=38+7a7e0214696e73657274206174206d617020706174683a2000=117-1+a=38+7a7e0214696e73657274206174206d617020706174683a2000=50+7a7e0214696e73657274206174206d617020706174683a2000=141-1+b=38+7a7e0214696e73657274206174206d617020706174683a2000=15-1+e=38+7a7e021472656d6f7665206174206d617020706174683a2000=44+7a7e021472656d6f7665206174206d617020706174683a2000=103-1+b=38+7a7e021472656d6f7665206174206d617020706174683a2000=93-1+c=376+7a7e0214696e73657274206174206d617020706174683a2000=41-1+c=560+7a7e021472656d6f7665206174206d617020706174683a2000=44+7a7e021472656d6f7665206174206d617020706174683a2000=45-1+3=59-1+b=38+7a7e021472656d6f7665206174206d617020706174683a2000=158-2+4025=38+7a7e021472656d6f7665206174206d617020706174683a2000=43-1+a=38+7a7e021472656d6f7665206174206d617020706174683a2000=44+7a7e021472656d6f7665206174206d617020706174683a2000=1270",
+    "6903baf4da82f9ee16d3cfbd6dc30e91f5e867b61845e946e3d7a399735cd52c",
     []
   )
 );
@@ -353,15 +358,15 @@ export class CountdownBettingMarketInstance extends ContractInstance {
       this.contractId,
       "userTargetByRoundAndBettor"
     ),
-    finalizedByRound: new RalphMap<HexString, boolean>(
-      CountdownBettingMarket.contract,
-      this.contractId,
-      "finalizedByRound"
-    ),
     winnerByRound: new RalphMap<HexString, Address>(
       CountdownBettingMarket.contract,
       this.contractId,
       "winnerByRound"
+    ),
+    bettorCountByRound: new RalphMap<HexString, bigint>(
+      CountdownBettingMarket.contract,
+      this.contractId,
+      "bettorCountByRound"
     ),
   };
 
@@ -412,11 +417,25 @@ export class CountdownBettingMarketInstance extends ContractInstance {
     );
   }
 
+  subscribeCarryOverRolledEvent(
+    options: EventSubscribeOptions<CountdownBettingMarketTypes.CarryOverRolledEvent>,
+    fromCount?: number
+  ): EventSubscription {
+    return subscribeContractEvent(
+      CountdownBettingMarket.contract,
+      this,
+      options,
+      "CarryOverRolled",
+      fromCount
+    );
+  }
+
   subscribeAllEvents(
     options: EventSubscribeOptions<
       | CountdownBettingMarketTypes.BetPlacedEvent
       | CountdownBettingMarketTypes.RoundFinalizedEvent
       | CountdownBettingMarketTypes.ClaimedEvent
+      | CountdownBettingMarketTypes.CarryOverRolledEvent
     >,
     fromCount?: number
   ): EventSubscription {

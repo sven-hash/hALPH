@@ -1,19 +1,18 @@
 Contract CountdownBettingMarket(
     game: CountdownGame,
-    protocolFeeBps: U256,
-    mut feePot: U256,
     mut carryOverPot: U256
 ) {
     mapping[ByteVec, U256] totalPoolByRound
     mapping[ByteVec, U256] poolByRoundAndTarget
     mapping[ByteVec, U256] userBetByRoundAndBettor
     mapping[ByteVec, Address] userTargetByRoundAndBettor
-    mapping[ByteVec, Bool] finalizedByRound
     mapping[ByteVec, Address] winnerByRound
+    mapping[ByteVec, U256] bettorCountByRound
 
     event BetPlaced(roundId: U256, bettor: Address, target: Address, amount: U256)
-    event RoundFinalized(roundId: U256, winner: Address, totalPool: U256, feeAmount: U256)
+    event RoundFinalized(roundId: U256, winner: Address, totalPool: U256)
     event Claimed(roundId: U256, bettor: Address, target: Address, payout: U256)
+    event CarryOverRolled(roundId: U256, amount: U256)
 
     const MIN_BET = 1e17
     const THIRTY_MINUTES_MS = 1800000
@@ -22,7 +21,6 @@ Contract CountdownBettingMarket(
         BetTooSmall = 0
         RoundMismatch = 1
         RoundClosed = 2
-        InvalidFeeBps = 3
         BettingWindowClosed = 4
         NotFinalized = 5
         NoBet = 6
@@ -33,8 +31,6 @@ Contract CountdownBettingMarket(
 
     @using(preapprovedAssets = true, assetsInContract = true, updateFields = true, checkExternalCaller = false)
     pub fn placeBet(roundId: U256, target: Address, amount: U256) -> () {
-        assert!(protocolFeeBps == 0, ErrorCodes.InvalidFeeBps)
-
         let (roundActive, currentRoundId, deadlineMs, _) = game.getRoundSnapshot()
         let now = blockTimeStamp!()
         assert!(roundActive, ErrorCodes.RoundClosed)
@@ -49,8 +45,10 @@ Contract CountdownBettingMarket(
         // If previous rounds had no correct predictions, roll over the carry pot
         // into the first prediction that opens this round's pool.
         if (!totalPoolByRound.contains!(roundKey) && carryOverPot > 0) {
-            totalPoolByRound.insert!(bettor, roundKey, carryOverPot)
+            let rolledAmount = carryOverPot
+            totalPoolByRound.insert!(bettor, roundKey, rolledAmount)
             carryOverPot = 0
+            emit CarryOverRolled(roundId, rolledAmount)
         }
 
         let hasBet = userBetByRoundAndBettor.contains!(userKey)
@@ -66,8 +64,7 @@ Contract CountdownBettingMarket(
             transferTokenToSelf!(bettor, ALPH, amount - oldAmount)
         } else if (oldAmount > amount) {
             transferTokenFromSelf!(bettor, ALPH, oldAmount - amount)
-        } else {
-        }
+        } else {}
 
         if (oldAmount > 0) {
             assert!(totalPoolByRound.contains!(roundKey), ErrorCodes.InvalidPoolState)
@@ -112,10 +109,24 @@ Contract CountdownBettingMarket(
             } else {
                 userBetByRoundAndBettor.insert!(bettor, userKey, amount)
                 userTargetByRoundAndBettor.insert!(bettor, userKey, target)
+                // New bettor in this round: increment count
+                if (bettorCountByRound.contains!(roundKey)) {
+                    bettorCountByRound[roundKey] = bettorCountByRound[roundKey] + 1
+                } else {
+                    bettorCountByRound.insert!(bettor, roundKey, 1)
+                }
             }
         } else {
             userBetByRoundAndBettor.remove!(bettor, userKey)
             userTargetByRoundAndBettor.remove!(bettor, userKey)
+            // Bettor fully withdrew: decrement count
+            assert!(bettorCountByRound.contains!(roundKey), ErrorCodes.InvalidPoolState)
+            let count = bettorCountByRound[roundKey]
+            if (count <= 1) {
+                bettorCountByRound.remove!(bettor, roundKey)
+            } else {
+                bettorCountByRound[roundKey] = count - 1
+            }
         }
 
         emit BetPlaced(roundId, bettor, target, amount)
@@ -124,7 +135,7 @@ Contract CountdownBettingMarket(
     @using(preapprovedAssets = true, updateFields = true, checkExternalCaller = false)
     pub fn finalizeRound(roundId: U256) -> () {
         let roundKey = encodeToByteVec!(roundId)
-        assert!(!finalizedByRound.contains!(roundKey), ErrorCodes.AlreadyFinalized)
+        assert!(!winnerByRound.contains!(roundKey), ErrorCodes.AlreadyFinalized)
 
         let (settled, winner) = game.getSettledWinner(roundId)
         assert!(settled, ErrorCodes.RoundNotSettled)
@@ -135,19 +146,16 @@ Contract CountdownBettingMarket(
         if (totalPool > 0 && winnerPool == 0) {
             carryOverPot = carryOverPot + totalPool
         }
-        let feeAmount = 0
-        feePot = feePot + feeAmount
 
-        finalizedByRound.insert!(callerAddress!(), roundKey, true)
         winnerByRound.insert!(callerAddress!(), roundKey, winner)
 
-        emit RoundFinalized(roundId, winner, totalPool, feeAmount)
+        emit RoundFinalized(roundId, winner, totalPool)
     }
 
     @using(assetsInContract = true, updateFields = true, checkExternalCaller = false)
     pub fn claim(roundId: U256) -> () {
         let roundKey = encodeToByteVec!(roundId)
-        assert!(finalizedByRound.contains!(roundKey), ErrorCodes.NotFinalized)
+        assert!(winnerByRound.contains!(roundKey), ErrorCodes.NotFinalized)
 
         let bettor = callerAddress!()
         let userKey = encodeToByteVec!(roundId, bettor)
@@ -156,11 +164,11 @@ Contract CountdownBettingMarket(
         let winner = winnerByRound[roundKey]
         let target = userTargetByRoundAndBettor[userKey]
         let betAmount = userBetByRoundAndBettor[userKey]
+        let targetKey = encodeToByteVec!(roundId, target)
 
         let payout = if (target == winner) {
             let totalPool = if (totalPoolByRound.contains!(roundKey)) totalPoolByRound[roundKey] else 0
-            let winnerKey = encodeToByteVec!(roundId, winner)
-            let winnerPool = if (poolByRoundAndTarget.contains!(winnerKey)) poolByRoundAndTarget[winnerKey] else 0
+            let winnerPool = if (poolByRoundAndTarget.contains!(targetKey)) poolByRoundAndTarget[targetKey] else 0
             if (winnerPool == 0) {
                 0
             } else {
@@ -172,6 +180,29 @@ Contract CountdownBettingMarket(
 
         userBetByRoundAndBettor.remove!(bettor, userKey)
         userTargetByRoundAndBettor.remove!(bettor, userKey)
+
+        // Clean up this bettor's contribution to the target pool
+        if (poolByRoundAndTarget.contains!(targetKey)) {
+            let currentTargetPool = poolByRoundAndTarget[targetKey]
+            if (currentTargetPool <= betAmount) {
+                poolByRoundAndTarget.remove!(bettor, targetKey)
+            } else {
+                poolByRoundAndTarget[targetKey] = currentTargetPool - betAmount
+            }
+        }
+
+        // Decrement bettor count; last claimer cleans up remaining round-level entries
+        assert!(bettorCountByRound.contains!(roundKey), ErrorCodes.InvalidPoolState)
+        let count = bettorCountByRound[roundKey]
+        if (count <= 1) {
+            bettorCountByRound.remove!(bettor, roundKey)
+            if (totalPoolByRound.contains!(roundKey)) {
+                totalPoolByRound.remove!(bettor, roundKey)
+            }
+            winnerByRound.remove!(bettor, roundKey)
+        } else {
+            bettorCountByRound[roundKey] = count - 1
+        }
 
         if (payout > 0) {
             transferTokenFromSelf!(bettor, ALPH, payout)

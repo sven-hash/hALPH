@@ -31,6 +31,7 @@ type BettingPageProps = {
   bettingWindowOpen: boolean
   isBettingWindowClosed: boolean
   canPlaceBet: boolean
+  isSameAsExistingBet: boolean
 
   // Actions state
   betStatus: string
@@ -104,6 +105,7 @@ export function BettingPage({
   bettingWindowOpen,
   isBettingWindowClosed,
   canPlaceBet,
+  isSameAsExistingBet,
   betStatus,
   placingBet,
   finalizingBetRound,
@@ -366,10 +368,10 @@ export function BettingPage({
       <div className="mt-5">
         <button
           onClick={placeBet}
-          disabled={!canPlaceBet || isBusy || isBettingWindowClosed}
+          disabled={!canPlaceBet || isSameAsExistingBet || isBusy || isBettingWindowClosed}
           className="w-full rounded border border-[#8B7355] bg-[#8B7355]/10 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#1C1C1C] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {placingBet ? 'Submitting...' : isBettingWindowClosed ? 'Prediction Closed' : hasMyBet ? 'Update Prediction' : 'Place Prediction'}
+          {placingBet ? 'Submitting...' : isBettingWindowClosed ? 'Prediction Closed' : isSameAsExistingBet ? 'Prediction Unchanged' : hasMyBet ? 'Update Prediction' : 'Place Prediction'}
         </button>
       </div>
 
