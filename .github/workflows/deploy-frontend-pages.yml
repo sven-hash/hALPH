@@ -48,7 +48,7 @@ jobs:
 
       - name: Build frontend
         env:
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_BASE_PATH: /
           VITE_ALEPHIUM_NETWORK: ${{ vars.VITE_ALEPHIUM_NETWORK || 'testnet' }}
           VITE_NODE_URL: ${{ vars.VITE_NODE_URL || 'https://node.testnet.alephium.org' }}
           VITE_COUNTDOWN_CONTRACT_ADDRESS: ${{ vars.VITE_COUNTDOWN_CONTRACT_ADDRESS }}
