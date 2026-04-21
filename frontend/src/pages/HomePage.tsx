@@ -103,8 +103,11 @@ export function HomePage({
               </motion.div>
             </AnimatePresence>
 
-            <p className="mb-8 text-center text-sm italic text-[#1C1C1C]/60">
+            <p className="mb-1 text-center text-sm italic text-[#1C1C1C]/60">
               Halved {halvedCount} times
+            </p>
+            <p className="mb-8 text-center text-xs text-[#1C1C1C]/40">
+              Each play halves the timer and adds 30 seconds
             </p>
 
             {/* Opulentia & Tributum */}
