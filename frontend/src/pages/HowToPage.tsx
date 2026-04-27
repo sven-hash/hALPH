@@ -40,7 +40,7 @@ export function HowToPage() {
           <ol className="list-decimal list-inside space-y-2">
             <li>
               <strong>Install a Wallet</strong> — Download the{' '}
-              <a href="https://alephium.org/#wallets" target="_blank" rel="noopener noreferrer" className="text-[#C9A227] underline hover:text-[#8B7355]">
+              <a href="https://alephium.org/wallets" target="_blank" rel="noopener noreferrer" className="text-[#C9A227] underline hover:text-[#8B7355]">
                 Alephium Extension Wallet
               </a>{' '}
               for your browser
