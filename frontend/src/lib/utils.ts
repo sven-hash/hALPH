@@ -1,6 +1,9 @@
 import { validateAddress } from '@alephium/web3'
 import { CountdownGame } from '../../../artifacts/ts/CountdownGame'
-import deploymentsData from '../../../deployments/.deployments.testnet.json'
+import testnetDeployments from '../../../deployments/.deployments.testnet.json'
+import mainnetDeployments from '../../../deployments/.deployments.mainnet.json'
+
+const deploymentsData = import.meta.env.VITE_ALEPHIUM_NETWORK === 'mainnet' ? mainnetDeployments : testnetDeployments
 import type { AppPage, StoredActiveBet, TimerPart } from '../types'
 
 // ─── Deployments ────────────────────────────────────────────────────────────
